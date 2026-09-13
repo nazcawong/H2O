@@ -1,0 +1,49 @@
+第 9 課  trait 與 impl
+EN: Lesson 9  traits and impls
+
+類型類：約束寫在參數上。Int／Bool／Text／列表內建 Eq。
+自訂 ADT 沒有 Eq，除非寫 impl。
+EN: Type classes: constraints on parameters. Int/Bool/Text/lists have Eq built in.
+A custom ADT has no Eq until you write impl.
+
+`impl Functor[Int]` 紅：Int 不是 F[_]。同一型兩份 impl 紅，不求解。
+EN: `impl Functor[Int]` is red: Int is not F[_]. Two impls for one type is red; no solver.
+
+  def contains[A: Eq](xs: List[A], x: A) -> Bool:
+      any(xs, fn(y): y == x)
+
+  contains([1, 2], 1)
+
+type Color 再 contains([Red], Blue) 是類型錯誤：Color 沒有 Eq。
+
+== 仍是同型比較。沒寫 [A: Eq] 時，Red == Blue 可以過。
+
+trait 的方法依第一個參數的型構選 impl（縮排區塊空行結束）：
+
+  trait Functor[F[_]]:
+      def map[A, B](fa: F[A], f: A -> B) -> F[B]
+
+  impl Functor[List]:
+      def map(xs, f):
+          map(xs, f)
+
+  impl Functor[Maybe]:
+      def map(mx, f):
+          match mx:
+              case None:
+                  None
+              case Some(x):
+                  Some(f(x))
+
+  Functor.map([1, 2], fn(x): x + 1)
+  Functor.map(Some(1), fn(x): x + 1)
+  Functor.map(1, fn(x): x)     紅：Int 沒有 Functor
+
+同一型不能寫兩份 impl。List 例子：:load examples/traits.h2o
+（檔案有 def main；:load 後請用檔裡的函數名。）
+
+練習（空行回 h2o>）：
+
+  1) 寫 contains，試 contains([1], 1)
+  2) 對 Color 呼叫 contains，讀「沒有 Eq」
+  3) 寫 Functor[Maybe]，Functor.map(Some(3), fn(x): x * 2)

@@ -1,0 +1,4 @@
+def main() -> {IO} ():
+    println(later(1))
+def later(n: Int) -> Int:
+    n + 1

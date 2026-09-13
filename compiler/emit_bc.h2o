@@ -1,0 +1,1152 @@
+# h2oc emit bytecode — BH。opcode 對齊 compiler/rt.c。
+
+def op_iconst():
+    1
+def op_sconst():
+    2
+def op_bconst():
+    3
+def op_uconst():
+    4
+def op_load():
+    5
+def op_store():
+    6
+def op_pop():
+    7
+def op_callg():
+    8
+def op_ret():
+    9
+def op_add():
+    10
+def op_sub():
+    11
+def op_eq():
+    12
+def op_ne():
+    13
+def op_lt():
+    14
+def op_not():
+    17
+def op_jmp():
+    18
+def op_jmpz():
+    19
+def op_list():
+    20
+def op_rec():
+    21
+def op_get():
+    22
+def op_print():
+    23
+def op_cat():
+    24
+def op_clo():
+    25
+def op_loadc():
+    26
+def op_call():
+    27
+def op_dup():
+    28
+def op_len():
+    29
+def op_idx():
+    30
+def op_tail():
+    31
+def op_ctor():
+    32
+def op_istag():
+    33
+def op_geti():
+    34
+def op_maybeidx():
+    35
+def op_builtin():
+    36
+def op_mul():
+    37
+def op_div():
+    38
+def op_le():
+    39
+def op_ge():
+    40
+def op_gt():
+    41
+def op_lnew():
+    42
+def op_ladd():
+    43
+def op_lextend():
+    44
+def op_islist():
+    45
+def op_none():
+    46
+def op_push_h():
+    47
+def op_pop_h():
+    48
+def op_throw():
+    49
+def op_okerr():
+    50
+def op_gload():
+    51
+def op_gstore():
+    52
+
+def al_get(xs, k, d):
+    match xs:
+        case []:
+            d
+        case [p, *rest]:
+            if p.k == k:
+                p.v
+            else:
+                al_get(rest, k, d)
+
+def al_has(xs, k):
+    match xs:
+        case []:
+            False
+        case [p, *rest]:
+            p.k == k or al_has(rest, k)
+
+def strs_find(xs, s, i):
+    match xs:
+        case []:
+            0 - 1
+        case [x, *rest]:
+            if x == s:
+                i
+            else:
+                strs_find(rest, s, i + 1)
+
+def intern(st, s):
+    i = strs_find(st.strs, s, 0)
+    if i < 0:
+        {code: st.code, jumps: st.jumps, locs: st.locs, nloc: st.nloc, strs: [*st.strs, s], fn_ids: st.fn_ids, fns: st.fns, lam_n: st.lam_n, caps: st.caps, gids: st.gids, i: list_len(st.strs)}
+    else:
+        {code: st.code, jumps: st.jumps, locs: st.locs, nloc: st.nloc, strs: st.strs, fn_ids: st.fn_ids, fns: st.fns, lam_n: st.lam_n, caps: st.caps, gids: st.gids, i: i}
+
+def loc_of(st, name):
+    i = al_get(st.locs, name, 0 - 1)
+    if i < 0:
+        {code: st.code, jumps: st.jumps, locs: [{k: name, v: st.nloc}, *st.locs], nloc: st.nloc + 1, strs: st.strs, fn_ids: st.fn_ids, fns: st.fns, lam_n: st.lam_n, caps: st.caps, gids: st.gids, i: st.nloc}
+    else:
+        {code: st.code, jumps: st.jumps, locs: st.locs, nloc: st.nloc, strs: st.strs, fn_ids: st.fn_ids, fns: st.fns, lam_n: st.lam_n, caps: st.caps, gids: st.gids, i: i}
+
+def emit1(st, a):
+    {code: [*st.code, a], jumps: st.jumps, locs: st.locs, nloc: st.nloc, strs: st.strs, fn_ids: st.fn_ids, fns: st.fns, lam_n: st.lam_n, caps: st.caps, gids: st.gids}
+
+def emit2(st, a, b):
+    {code: [*st.code, a, b], jumps: st.jumps, locs: st.locs, nloc: st.nloc, strs: st.strs, fn_ids: st.fn_ids, fns: st.fns, lam_n: st.lam_n, caps: st.caps, gids: st.gids}
+
+def emit3(st, a, b, c):
+    {code: [*st.code, a, b, c], jumps: st.jumps, locs: st.locs, nloc: st.nloc, strs: st.strs, fn_ids: st.fn_ids, fns: st.fns, lam_n: st.lam_n, caps: st.caps, gids: st.gids}
+
+def emit_jmp(st, op):
+    {code: [*st.code, op, 0], jumps: [*st.jumps, list_len(st.code) + 1], locs: st.locs, nloc: st.nloc, strs: st.strs, fn_ids: st.fn_ids, fns: st.fns, lam_n: st.lam_n, caps: st.caps, gids: st.gids, ji: list_len(st.code) + 1}
+
+def set_at(xs, i, v, j):
+    match xs:
+        case []:
+            []
+        case [x, *rest]:
+            if j == i:
+                [v, *rest]
+            else:
+                [x, *set_at(rest, i, v, j + 1)]
+
+def patch(st, ji, target):
+    {code: set_at(st.code, ji, target, 0), jumps: st.jumps, locs: st.locs, nloc: st.nloc, strs: st.strs, fn_ids: st.fn_ids, fns: st.fns, lam_n: st.lam_n, caps: st.caps, gids: st.gids}
+
+def here(st):
+    list_len(st.code)
+
+def load_name(st, name):
+    li = al_get(st.locs, name, 0 - 1)
+    ci = al_get(st.caps, name, 0 - 1)
+    gi = al_get(st.gids, name, 0 - 1)
+    if li >= 0:
+        emit2(st, op_load(), li)
+    elif ci >= 0:
+        emit2(st, op_loadc(), ci)
+    elif gi >= 0:
+        emit2(st, op_gload(), gi)
+    elif name == "None":
+        emit1(st, op_none())
+    elif name == "True":
+        emit2(st, op_bconst(), 1)
+    elif name == "False":
+        emit2(st, op_bconst(), 0)
+    elif al_has(st.fn_ids, name):
+        emit3(st, op_clo(), al_get(st.fn_ids, name, 0), 0)
+    else:
+        emit1(st, op_uconst())
+
+def builtin_of(name):
+    if name == "join":
+        Some(0)
+    elif name == "range":
+        Some(1)
+    elif name == "chars":
+        Some(2)
+    elif name == "text_len":
+        Some(3)
+    elif name == "slice_text":
+        Some(4)
+    elif name == "starts_with":
+        Some(5)
+    elif name == "int_to_text":
+        Some(6)
+    elif name == "list_len":
+        Some(7)
+    elif name == "die":
+        Some(8)
+    elif name == "argv":
+        Some(9)
+    elif name == "println":
+        Some(12)
+    elif name == "foldl":
+        Some(13)
+    elif name == "any":
+        Some(14)
+    elif name == "map":
+        Some(15)
+    elif name == "filter":
+        Some(16)
+    elif name == "fake_io":
+        Some(18)
+    elif name == "vm_exec":
+        Some(28)
+    elif name == "cc_link":
+        Some(29)
+    elif name == "vect":
+        Some(32)
+    elif name == "vect_len":
+        Some(33)
+    elif name == "vect_xs":
+        Some(34)
+    elif name == "chmod_x":
+        Some(35)
+    elif name == "set_diag":
+        Some(36)
+    elif name == "cap_start":
+        Some(37)
+    elif name == "cap_take":
+        Some(38)
+    elif name == "hex_esc":
+        Some(39)
+    elif name == "read_line":
+        Some(40)
+    elif name == "catch_die":
+        Some(41)
+    elif name == "write_out":
+        Some(42)
+    elif name == "shell_run":
+        Some(43)
+    elif name == "eprint":
+        Some(44)
+    elif name == "exit":
+        Some(45)
+    elif name == "gc":
+        Some(46)
+    elif name == "vect_cons":
+        Some(47)
+    elif name == "vect_head":
+        Some(48)
+    else:
+        None
+
+def skip_free(s):
+    s == "True" or s == "False" or s == "None" or s == "io" or s == "State" or s == "Except" or s == "Stream" or s == "conc" or s == "prim"
+
+def add_uniq(xs, s):
+    if any(xs, fn(x): x == s):
+        xs
+    else:
+        [*xs, s]
+
+def used_list_step(a, x):
+    used_expr(x, a)
+
+def used_list(xs, acc):
+    foldl(xs, acc, used_list_step)
+
+def used_fn_step(ps):
+    fn(a, n):
+        if any(ps, fn(p): p == n):
+            a
+        else:
+            add_uniq(a, n)
+
+def used_expr(e, acc):
+    match e:
+        case NVar(s):
+            add_uniq(acc, s)
+        case NCall(w):
+            used_list(w.args, used_expr(w.fun, acc))
+        case NField(w):
+            used_expr(w.obj, acc)
+        case NBin(w):
+            used_expr(w.r, used_expr(w.l, acc))
+        case NUn(w):
+            used_expr(w.e, acc)
+        case NList(xs):
+            used_list(xs, acc)
+        case NSpread(x):
+            used_expr(x, acc)
+        case NRec(w):
+            used_kvs(w.fields, used_expr(w.sp, acc))
+        case NUpd(w):
+            used_kvs(w.patches, used_expr(w.obj, acc))
+        case NIdx(w):
+            used_expr(w.i, used_expr(w.obj, acc))
+        case NIf(w):
+            used_stmts(w.else_, used_stmts(w.then, used_expr(w.cond, acc)))
+        case NMatch(w):
+            used_cases(w.cases, used_expr(w.e, acc))
+        case NFn(w):
+            foldl(used_expr(w.body, []), acc, used_fn_step(w.ps))
+        case NBlk(ss):
+            used_stmts(ss, acc)
+        case NFstr(ps):
+            foldl(ps, acc, used_fpart)
+        case NHandle(w):
+            used_kvs(w.hs, used_expr(w.e, acc))
+        case NWith(w):
+            used_stmts(w.body, used_expr(w.setup, acc))
+        case _:
+            acc
+
+def used_fpart(acc, p):
+    match p:
+        case FExp(e):
+            used_expr(e, acc)
+        case _:
+            acc
+
+def used_kv_step(a, kv):
+    match kv:
+        case NKV(w):
+            used_expr(w.e, a)
+        case _:
+            a
+
+def used_kvs(xs, acc):
+    foldl(xs, acc, used_kv_step)
+
+def used_stmt_step(a, s):
+    used_stmt(s, a)
+
+def used_stmts(ss, acc):
+    foldl(ss, acc, used_stmt_step)
+
+def used_stmt(s, acc):
+    match s:
+        case DLet(w):
+            used_expr(w.e, acc)
+        case DExp(e):
+            used_expr(e, acc)
+        case DDef(w):
+            used_stmts(w.body, acc)
+        case _:
+            acc
+
+def used_case_step(a, c):
+    match c:
+        case KCase(w):
+            used_stmts(w.body, a)
+        case _:
+            a
+
+def used_cases(cs, acc):
+    foldl(cs, acc, used_case_step)
+
+def builtin_named(s):
+    match builtin_of(s):
+        case Some(z):
+            True
+        case None:
+            False
+
+def is_globalish(st, s):
+    al_has(st.fn_ids, s) or al_has(st.gids, s) or skip_free(s) or is_ctor_name(s) or builtin_named(s)
+
+def free_step(ps, st):
+    fn(acc, n):
+        if any(ps, fn(p): p == n) or is_globalish(st, n):
+            acc
+        else:
+            [*acc, n]
+
+def free_vars(body, ps, st):
+    foldl(used_expr(body, []), [], free_step(ps, st))
+
+def bc_expr(st, e):
+    match e:
+        case NInt(x):
+            emit2(st, op_iconst(), x)
+        case NText(s):
+            u = intern(st, s)
+            emit2(u, op_sconst(), u.i)
+        case NBool(b):
+            if b:
+                emit2(st, op_bconst(), 1)
+            else:
+                emit2(st, op_bconst(), 0)
+        case NVar(s):
+            if is_ctor_name(s) and not al_has(st.locs, s) and not al_has(st.caps, s) and not al_has(st.gids, s) and not al_has(st.fn_ids, s) and s != "True" and s != "False" and s != "None":
+                u = intern(st, s)
+                emit3(u, op_ctor(), u.i, 0)
+            else:
+                load_name(st, s)
+        case NUnit(z):
+            emit1(st, op_uconst())
+        case NCall(w):
+            bc_call(st, w)
+        case NField(w):
+            bc_field(st, w)
+        case NBin(w):
+            bc_bin(st, w)
+        case NUn(w):
+            if w.op == "not":
+                s1 = bc_expr(st, w.e)
+                emit1(s1, op_not())
+            else:
+                s0 = emit2(st, op_iconst(), 0)
+                s1 = bc_expr(s0, w.e)
+                emit1(s1, op_sub())
+        case NList(xs):
+            bc_list(st, xs)
+        case NRec(w):
+            bc_rec(st, w)
+        case NUpd(w):
+            bc_upd(st, w)
+        case NIdx(w):
+            s1 = bc_expr(st, w.obj)
+            s2 = bc_expr(s1, w.i)
+            emit1(s2, op_maybeidx())
+        case NIf(w):
+            bc_if(st, w)
+        case NMatch(w):
+            bc_match(st, w)
+        case NFn(w):
+            bc_lam(st, w)
+        case NBlk(ss):
+            bc_block(st, ss, True)
+        case NFstr(ps):
+            bc_fstr(st, ps)
+        case NHandle(w):
+            bc_handle(st, w)
+        case NWith(w):
+            bc_with(st, w)
+        case NSpread(x):
+            bc_expr(st, x)
+        case _:
+            emit1(st, op_uconst())
+
+def bc_bin(st, w):
+    if w.op == "and":
+        s1 = bc_expr(st, w.l)
+        s2 = emit1(s1, op_dup())
+        j = emit_jmp(s2, op_jmpz())
+        s3 = emit1(j, op_pop())
+        s4 = bc_expr(s3, w.r)
+        patch(s4, j.ji, here(s4))
+    elif w.op == "or":
+        s1 = bc_expr(st, w.l)
+        s2 = emit1(s1, op_dup())
+        jz = emit_jmp(s2, op_jmpz())
+        je = emit_jmp(jz, op_jmp())
+        s3 = patch(je, jz.ji, here(je))
+        s4 = emit1(s3, op_pop())
+        s5 = bc_expr(s4, w.r)
+        patch(s5, je.ji, here(s5))
+    else:
+        s1 = bc_expr(st, w.l)
+        s2 = bc_expr(s1, w.r)
+        opc = if w.op == "+":
+            op_add()
+        elif w.op == "-":
+            op_sub()
+        elif w.op == "*":
+            op_mul()
+        elif w.op == "/":
+            op_div()
+        elif w.op == "==":
+            op_eq()
+        elif w.op == "!=":
+            op_ne()
+        elif w.op == "<":
+            op_lt()
+        elif w.op == "<=":
+            op_le()
+        elif w.op == ">=":
+            op_ge()
+        elif w.op == ">":
+            op_gt()
+        else:
+            op_eq()
+        emit1(s2, opc)
+
+def is_spread(x):
+    match x:
+        case NSpread(z):
+            True
+        case _:
+            False
+
+def bc_list(st, xs):
+    if any(xs, is_spread):
+        s0 = emit1(st, op_lnew())
+        foldl(xs, s0, bc_list_item)
+    else:
+        s1 = foldl(xs, st, fn(acc, x): bc_expr(acc, x))
+        emit2(s1, op_list(), list_len(xs))
+
+def bc_list_item(st, x):
+    match x:
+        case NSpread(e):
+            s1 = bc_expr(st, e)
+            emit1(s1, op_lextend())
+        case _:
+            s1 = bc_expr(st, x)
+            emit1(s1, op_ladd())
+
+def bc_rec_field(acc, kv):
+    match kv:
+        case NKV(w):
+            s1 = bc_expr(acc.st, w.e)
+            u = intern(s1, w.name)
+            {st: u, ks: [*acc.ks, u.i]}
+        case _:
+            acc
+
+def emit_rec_tail(st, ks):
+    s0 = emit2(st, op_rec(), list_len(ks))
+    foldl(ks, s0, fn(acc, k): emit1(acc, k))
+
+def bc_patch_field(st, kv):
+    match kv:
+        case NKV(w):
+            u = intern(st, w.name)
+            s1 = emit2(u, op_sconst(), u.i)
+            s2 = bc_expr(s1, w.e)
+            emit3(s2, op_builtin(), 31, 3)
+        case _:
+            st
+
+def bc_rec(st, w):
+    if w.has:
+        s0 = bc_expr(st, w.sp)
+        foldl(w.fields, s0, bc_patch_field)
+    else:
+        s1 = foldl(w.fields, {st: st, ks: []}, bc_rec_field)
+        emit_rec_tail(s1.st, s1.ks)
+
+def bc_upd(st, w):
+    s0 = bc_expr(st, w.obj)
+    foldl(w.patches, s0, bc_patch_field)
+
+def bc_fstr(st, ps):
+    s0 = intern(st, "")
+    s1 = emit2(s0, op_sconst(), s0.i)
+    foldl(ps, s1, bc_fpart)
+
+def bc_fpart(st, p):
+    match p:
+        case FLit(s):
+            u = intern(st, s)
+            s1 = emit2(u, op_sconst(), u.i)
+            emit1(s1, op_cat())
+        case FExp(e):
+            s1 = bc_expr(st, e)
+            emit1(s1, op_cat())
+        case _:
+            st
+
+def bc_field(st, w):
+    match w.obj:
+        case NVar(s):
+            if s == "io" and w.name == "read_file":
+                emit1(st, op_uconst())
+            elif s == "State" and w.name == "get":
+                emit3(st, op_builtin(), 20, 0)
+            elif s == "State" and w.name == "put":
+                emit1(st, op_uconst())
+            elif s == "State" and w.name == "run":
+                emit1(st, op_uconst())
+            elif s == "Except" and w.name == "to_result":
+                emit3(st, op_builtin(), 23, 0)
+            elif s == "Except" and w.name == "throw":
+                emit1(st, op_uconst())
+            elif s == "Stream" and w.name == "iterate":
+                emit1(st, op_uconst())
+            elif s == "conc" and w.name == "together":
+                emit1(st, op_uconst())
+            elif s == "prim" and w.name == "ffi_call":
+                emit1(st, op_uconst())
+            else:
+                s1 = bc_expr(st, w.obj)
+                u = intern(s1, w.name)
+                emit2(u, op_get(), u.i)
+        case _:
+            s1 = bc_expr(st, w.obj)
+            u = intern(s1, w.name)
+            emit2(u, op_get(), u.i)
+
+def bc_call(st, w):
+    match w.fun:
+        case NVar(s):
+            bc_call_var(st, s, w.args)
+        case NField(f):
+            bc_call_field(st, f, w.args)
+        case _:
+            s1 = foldl(w.args, st, fn(acc, a): bc_expr(acc, a))
+            s2 = bc_expr(s1, w.fun)
+            emit2(s2, op_call(), list_len(w.args))
+
+def bc_call_var(st, s, args):
+    if s == "cat" and list_len(args) == 2:
+        s1 = bc_expr(st, nth(args, 0))
+        s2 = bc_expr(s1, nth(args, 1))
+        emit1(s2, op_cat())
+    elif s == "println" and list_len(args) == 1:
+        s1 = bc_expr(st, nth(args, 0))
+        emit1(s1, op_print())
+    else:
+        match builtin_of(s):
+            case Some(bid):
+                s1 = foldl(args, st, fn(acc, a): bc_expr(acc, a))
+                emit3(s1, op_builtin(), bid, list_len(args))
+            case None:
+                if is_ctor_name(s) and not al_has(st.locs, s) and not al_has(st.caps, s) and not al_has(st.gids, s):
+                    s1 = foldl(args, st, fn(acc, a): bc_expr(acc, a))
+                    u = intern(s1, s)
+                    emit3(u, op_ctor(), u.i, list_len(args))
+                elif al_has(st.locs, s) or al_has(st.caps, s) or al_has(st.gids, s):
+                    s1 = foldl(args, st, fn(acc, a): bc_expr(acc, a))
+                    s2 = load_name(s1, s)
+                    emit2(s2, op_call(), list_len(args))
+                elif al_has(st.fn_ids, s):
+                    s1 = foldl(args, st, fn(acc, a): bc_expr(acc, a))
+                    emit3(s1, op_callg(), al_get(st.fn_ids, s, 0), list_len(args))
+                else:
+                    s1 = foldl(args, st, fn(acc, a): bc_expr(acc, a))
+                    emit1(s1, op_uconst())
+
+def bc_call_field(st, f, args):
+    match f.obj:
+        case NVar(s):
+            if s == "io" and f.name == "read_file":
+                s1 = bc_expr(st, nth(args, 0))
+                emit3(s1, op_builtin(), 10, 1)
+            elif s == "io" and f.name == "write_file":
+                s1 = bc_expr(st, nth(args, 0))
+                s2 = bc_expr(s1, nth(args, 1))
+                emit3(s2, op_builtin(), 11, 2)
+            elif s == "io" and f.name == "open":
+                s1 = bc_expr(st, nth(args, 0))
+                emit3(s1, op_builtin(), 19, 1)
+            elif s == "State" and f.name == "get":
+                emit3(st, op_builtin(), 20, 0)
+            elif s == "State" and f.name == "put":
+                s1 = bc_expr(st, nth(args, 0))
+                emit3(s1, op_builtin(), 21, 1)
+            elif s == "State" and f.name == "run":
+                s1 = bc_expr(st, nth(args, 0))
+                emit3(s1, op_builtin(), 22, 1)
+            elif s == "Except" and f.name == "throw":
+                s1 = bc_expr(st, nth(args, 0))
+                emit1(s1, op_throw())
+            elif s == "Stream" and f.name == "iterate":
+                s1 = bc_expr(st, nth(args, 0))
+                s2 = bc_expr(s1, nth(args, 1))
+                emit3(s2, op_builtin(), 24, 2)
+            elif s == "Stream" and f.name == "take":
+                s1 = bc_expr(st, nth(args, 0))
+                s2 = bc_expr(s1, nth(args, 1))
+                emit3(s2, op_builtin(), 25, 2)
+            elif s == "Stream" and f.name == "map":
+                s1 = bc_expr(st, nth(args, 0))
+                s2 = bc_expr(s1, nth(args, 1))
+                emit3(s2, op_builtin(), 26, 2)
+            elif s == "conc" and f.name == "together":
+                s1 = bc_expr(st, nth(args, 0))
+                s2 = bc_expr(s1, nth(args, 1))
+                emit3(s2, op_builtin(), 27, 2)
+            elif s == "prim" and f.name == "ffi_call":
+                s1 = foldl(args, st, fn(acc, a): bc_expr(acc, a))
+                emit3(s1, op_builtin(), 17, list_len(args))
+            else:
+                s1 = foldl(args, st, fn(acc, a): bc_expr(acc, a))
+                s2 = bc_expr(s1, f.obj)
+                u = intern(s2, f.name)
+                s3 = emit2(u, op_get(), u.i)
+                emit2(s3, op_call(), list_len(args))
+        case _:
+            s1 = foldl(args, st, fn(acc, a): bc_expr(acc, a))
+            s2 = bc_expr(s1, NField(f))
+            emit2(s2, op_call(), list_len(args))
+
+def bc_if(st, w):
+    s1 = bc_expr(st, w.cond)
+    jz = emit_jmp(s1, op_jmpz())
+    s2 = bc_block(jz, w.then, True)
+    je = emit_jmp(s2, op_jmp())
+    s3 = patch(je, jz.ji, here(je))
+    s4 = bc_block(s3, w.else_, True)
+    patch(s4, je.ji, here(s4))
+
+def caps_of(xs):
+    foldl(xs, {xs: [], i: 0}, fn(acc, n): {xs: [{k: n, v: acc.i}, *acc.xs], i: acc.i + 1}).xs
+
+def load_cap(acc, n):
+    load_name(acc, n)
+
+def compile_lifted(st, ps, body, as_block):
+    name = cat("_x", int_to_text(st.lam_n))
+    fid = al_get(st.fn_ids, name, 0)
+    free = if as_block:
+        foldl(used_stmts(body, []), [], free_step(ps, st))
+    else:
+        free_vars(body, ps, st)
+    st1 = {code: st.code, jumps: st.jumps, locs: st.locs, nloc: st.nloc, strs: st.strs, fn_ids: st.fn_ids, fns: st.fns, lam_n: st.lam_n + 1, caps: st.caps, gids: st.gids}
+    inner0 = empty_inner(ps, st1)
+    inner = {code: inner0.code, jumps: inner0.jumps, locs: inner0.locs, nloc: inner0.nloc, strs: inner0.strs, fn_ids: inner0.fn_ids, fns: inner0.fns, lam_n: inner0.lam_n, caps: caps_of(free), gids: inner0.gids}
+    inner2 = if as_block:
+        bc_block(inner, body, True)
+    else:
+        bc_fn_body(inner, body)
+    inner3 = emit1(inner2, op_ret())
+    f = {name: name, params: ps, code: inner3.code, jumps: inner3.jumps, nloc: inner3.nloc}
+    st2 = {code: st1.code, jumps: st1.jumps, locs: st1.locs, nloc: st1.nloc, strs: inner3.strs, fn_ids: inner3.fn_ids, fns: set_fn(inner3.fns, name, f), lam_n: inner3.lam_n, caps: st1.caps, gids: inner3.gids}
+    s3 = foldl(free, st2, load_cap)
+    s4 = emit3(s3, op_clo(), fid, list_len(free))
+    {st: s4, name: name}
+
+def bc_lam(st, w):
+    compile_lifted(st, w.ps, w.body, False).st
+
+def empty_inner(ps, st):
+    locs = foldl(ps, {xs: [], i: 0}, fn(acc, p): {xs: [{k: p, v: acc.i}, *acc.xs], i: acc.i + 1}).xs
+    {code: [], jumps: [], locs: locs, nloc: list_len(ps), strs: st.strs, fn_ids: st.fn_ids, fns: st.fns, lam_n: st.lam_n, caps: [], gids: st.gids}
+
+def bc_fn_body(st, body):
+    match body:
+        case NBlk(ss):
+            bc_block(st, ss, True)
+        case _:
+            bc_expr(st, body)
+
+def bc_block(st, ss, keep):
+    if list_len(ss) == 0:
+        if keep:
+            emit1(st, op_uconst())
+        else:
+            st
+    else:
+        bc_block_go(st, ss, keep)
+
+def bc_block_go(st, ss, keep):
+    match ss:
+        case [s]:
+            bc_stmt(st, s, keep)
+        case [s, *rest]:
+            s1 = bc_stmt(st, s, False)
+            bc_block_go(s1, rest, keep)
+        case _:
+            st
+
+def bc_stmt(st, s, keep):
+    match s:
+        case DLet(w):
+            s1 = bc_expr(st, w.e)
+            u = loc_of(s1, w.name)
+            s2 = emit2(u, op_store(), u.i)
+            if keep:
+                emit2(s2, op_load(), u.i)
+            else:
+                s2
+        case DExp(e):
+            s1 = bc_expr(st, e)
+            if keep:
+                s1
+            else:
+                emit1(s1, op_pop())
+        case DDef(w):
+            r = compile_lifted(st, w.ps, w.body, True)
+            u = loc_of(r.st, w.name)
+            s2 = emit2(u, op_store(), u.i)
+            if keep:
+                emit2(s2, op_load(), u.i)
+            else:
+                s2
+        case _:
+            if keep:
+                emit1(st, op_uconst())
+            else:
+                st
+
+def bc_match(st, w):
+    s1 = bc_expr(st, w.e)
+    u = loc_of(s1, "$m")
+    s2 = emit2(u, op_store(), u.i)
+    acc = foldl(w.cases, {st: s2, ends: []}, bc_case_step(u.i))
+    s3 = emit1(acc.st, op_uconst())
+    foldl(acc.ends, s3, fn(stt, ji): patch(stt, ji, here(s3)))
+
+def bc_case_step(tmp):
+    fn(acc, c):
+        match c:
+            case KCase(w):
+                fails = {st: acc.st, fs: []}
+                f1 = bc_pat(fails, w.pat, tmp)
+                s1 = bc_block(f1.st, w.body, True)
+                je = emit_jmp(s1, op_jmp())
+                here_n = here(je)
+                st2 = foldl(f1.fs, je, fn(stt, ji): patch(stt, ji, here_n))
+                {st: st2, ends: [*acc.ends, je.ji]}
+            case _:
+                acc
+
+def bc_pat(acc, p, tmp):
+    match p:
+        case QWild(z):
+            acc
+        case QVar(s):
+            s1 = emit2(acc.st, op_load(), tmp)
+            u = loc_of(s1, s)
+            s2 = emit2(u, op_store(), u.i)
+            {st: s2, fs: acc.fs}
+        case QInt(x):
+            s1 = emit2(acc.st, op_load(), tmp)
+            s2 = emit2(s1, op_iconst(), x)
+            s3 = emit1(s2, op_eq())
+            j = emit_jmp(s3, op_jmpz())
+            {st: j, fs: [*acc.fs, j.ji]}
+        case QCtor(w):
+            s1 = emit2(acc.st, op_load(), tmp)
+            u = intern(s1, w.name)
+            s2 = emit2(u, op_istag(), u.i)
+            j = emit_jmp(s2, op_jmpz())
+            acc2 = {st: j, fs: [*acc.fs, j.ji]}
+            if w.has:
+                s3 = emit2(acc2.st, op_load(), tmp)
+                s4 = emit2(s3, op_geti(), 0)
+                u2 = loc_of(s4, "$p")
+                s5 = emit2(u2, op_store(), u2.i)
+                bc_pat({st: s5, fs: acc2.fs}, w.arg, u2.i)
+            else:
+                acc2
+        case QList(w):
+            s1 = emit2(acc.st, op_load(), tmp)
+            s2 = emit1(s1, op_islist())
+            j0 = emit_jmp(s2, op_jmpz())
+            n = list_len(w.items)
+            s3 = emit2(j0, op_load(), tmp)
+            s4 = emit1(s3, op_len())
+            s5 = emit2(s4, op_iconst(), n)
+            s6 = if w.has:
+                emit1(s5, op_ge())
+            else:
+                emit1(s5, op_eq())
+            j1 = emit_jmp(s6, op_jmpz())
+            acc2 = {st: j1, fs: [*acc.fs, j0.ji, j1.ji]}
+            acc3 = foldl(w.items, {st: acc2.st, fs: acc2.fs, i: 0}, bc_plist_item(tmp))
+            if w.has:
+                s7 = emit2(acc3.st, op_load(), tmp)
+                s8 = emit2(s7, op_tail(), n)
+                u = loc_of(s8, w.rest)
+                s9 = emit2(u, op_store(), u.i)
+                {st: s9, fs: acc3.fs}
+            else:
+                {st: acc3.st, fs: acc3.fs}
+        case _:
+            acc
+
+def bc_plist_item(tmp):
+    fn(acc, p):
+        s1 = emit2(acc.st, op_load(), tmp)
+        s2 = emit2(s1, op_iconst(), acc.i)
+        s3 = emit1(s2, op_idx())
+        u = loc_of(s3, "$l")
+        s4 = emit2(u, op_store(), u.i)
+        a2 = bc_pat({st: s4, fs: acc.fs}, p, u.i)
+        {st: a2.st, fs: a2.fs, i: acc.i + 1}
+
+def bc_handle(st, w):
+    s1 = foldl(w.hs, {st: st, ks: []}, bc_rec_field)
+    s2 = emit_rec_tail(s1.st, s1.ks)
+    s3 = emit1(s2, op_push_h())
+    s4 = bc_expr(s3, w.e)
+    s5 = emit1(s4, op_okerr())
+    emit1(s5, op_pop_h())
+
+def bc_with(st, w):
+    s1 = bc_expr(st, w.setup)
+    u = loc_of(s1, w.var)
+    s2 = emit2(u, op_store(), u.i)
+    s3 = bc_block(s2, w.body, True)
+    s4 = emit2(s3, op_load(), u.i)
+    s5 = emit3(s4, op_builtin(), 30, 1)
+    emit1(s5, op_pop())
+
+def is_jump_at(jumps, i):
+    any(jumps, fn(j): j == i)
+
+def jump_val(x, jumps, entry, i):
+    if is_jump_at(jumps, i):
+        x + entry
+    else:
+        x
+
+def add_jumps(code, jumps, entry, i):
+    match code:
+        case []:
+            []
+        case [x, *rest]:
+            [jump_val(x, jumps, entry, i), *add_jumps(rest, jumps, entry, i + 1)]
+
+def collect_def_step(acc, s):
+    match s:
+        case DDef(w):
+            [*acc, w]
+        case _:
+            acc
+
+def collect_defs(ss):
+    foldl(ss, [], collect_def_step)
+
+def collect_let_step(acc, s):
+    match s:
+        case DLet(w):
+            [*acc, w]
+        case _:
+            acc
+
+def collect_lets(ss):
+    foldl(ss, [], collect_let_step)
+
+def register_def(st, w):
+    fid = list_len(st.fn_ids)
+    {code: st.code, jumps: st.jumps, locs: st.locs, nloc: st.nloc, strs: st.strs, fn_ids: [{k: w.name, v: fid}, *st.fn_ids], fns: [*st.fns, {name: w.name, params: w.ps, code: [], jumps: [], nloc: 0}], lam_n: st.lam_n, caps: st.caps, gids: st.gids}
+
+def register_lam(st, name, ps):
+    fid = list_len(st.fn_ids)
+    {code: st.code, jumps: st.jumps, locs: st.locs, nloc: st.nloc, strs: st.strs, fn_ids: [{k: name, v: fid}, *st.fn_ids], fns: [*st.fns, {name: name, params: ps, code: [], jumps: [], nloc: 0}], lam_n: st.lam_n + 1, caps: st.caps, gids: st.gids}
+
+def set_fn_one(name, f):
+    fn(x):
+        if x.name == name:
+            f
+        else:
+            x
+
+def set_fn(fns, name, f):
+    map(fns, set_fn_one(name, f))
+
+def lift_list(st, xs):
+    foldl(xs, st, lift_expr)
+
+def lift_kvs(st, xs):
+    foldl(xs, st, lift_kv)
+
+def lift_kv(st, kv):
+    match kv:
+        case NKV(w):
+            lift_expr(st, w.e)
+        case _:
+            st
+
+def lift_stmts(st, ss):
+    foldl(ss, st, lift_stmt)
+
+def lift_stmt(st, s):
+    match s:
+        case DLet(w):
+            lift_expr(st, w.e)
+        case DExp(e):
+            lift_expr(st, e)
+        case DDef(w):
+            name = cat("_x", int_to_text(st.lam_n))
+            st1 = register_lam(st, name, w.ps)
+            lift_stmts(st1, w.body)
+        case _:
+            st
+
+def lift_cases(st, cs):
+    foldl(cs, st, lift_case)
+
+def lift_case(st, c):
+    match c:
+        case KCase(w):
+            lift_stmts(st, w.body)
+        case _:
+            st
+
+def lift_fpart(st, p):
+    match p:
+        case FExp(e):
+            lift_expr(st, e)
+        case _:
+            st
+
+def lift_expr(st, e):
+    match e:
+        case NFn(w):
+            name = cat("_x", int_to_text(st.lam_n))
+            st1 = register_lam(st, name, w.ps)
+            lift_expr(st1, w.body)
+        case NCall(w):
+            lift_list(lift_expr(st, w.fun), w.args)
+        case NField(w):
+            lift_expr(st, w.obj)
+        case NBin(w):
+            lift_expr(lift_expr(st, w.l), w.r)
+        case NUn(w):
+            lift_expr(st, w.e)
+        case NList(xs):
+            lift_list(st, xs)
+        case NSpread(x):
+            lift_expr(st, x)
+        case NRec(w):
+            lift_kvs(lift_expr(st, w.sp), w.fields)
+        case NUpd(w):
+            lift_kvs(lift_expr(st, w.obj), w.patches)
+        case NIdx(w):
+            lift_expr(lift_expr(st, w.obj), w.i)
+        case NIf(w):
+            lift_stmts(lift_stmts(lift_expr(st, w.cond), w.then), w.else_)
+        case NMatch(w):
+            lift_cases(lift_expr(st, w.e), w.cases)
+        case NBlk(ss):
+            lift_stmts(st, ss)
+        case NFstr(ps):
+            foldl(ps, st, lift_fpart)
+        case NHandle(w):
+            lift_kvs(lift_expr(st, w.e), w.hs)
+        case NWith(w):
+            lift_stmts(lift_expr(st, w.setup), w.body)
+        case _:
+            st
+
+def lift_def(st, w):
+    lift_stmts(st, w.body)
+
+def lift_let(st, w):
+    lift_expr(st, w.e)
+
+def register_let(st, w):
+    {code: st.code, jumps: st.jumps, locs: st.locs, nloc: st.nloc, strs: st.strs, fn_ids: st.fn_ids, fns: st.fns, lam_n: st.lam_n, caps: st.caps, gids: [{k: w.name, v: list_len(st.gids)}, *st.gids]}
+
+def compile_def(st, w):
+    inner = empty_inner(w.ps, st)
+    inner2 = bc_block(inner, w.body, True)
+    inner3 = emit1(inner2, op_ret())
+    f = {name: w.name, params: w.ps, code: inner3.code, jumps: inner3.jumps, nloc: inner3.nloc}
+    {code: st.code, jumps: st.jumps, locs: st.locs, nloc: st.nloc, strs: inner3.strs, fn_ids: inner3.fn_ids, fns: set_fn(inner3.fns, w.name, f), lam_n: inner3.lam_n, caps: st.caps, gids: inner3.gids}
+
+def concat_one(acc, f):
+    entry = list_len(acc.code)
+    piece = add_jumps(f.code, f.jumps, entry, 0)
+    {code: [*acc.code, *piece], strs: acc.strs, fns: [*acc.fns, {name: f.name, entry: entry, arity: list_len(f.params), nlocals: f.nloc}], fn_ids: acc.fn_ids}
+
+def reset_lam(st):
+    {code: st.code, jumps: st.jumps, locs: st.locs, nloc: st.nloc, strs: st.strs, fn_ids: st.fn_ids, fns: st.fns, lam_n: 0, caps: st.caps, gids: st.gids}
+
+def emit_bc_program(ss):
+    ss2 = resolve_impls(ss)
+    defs = collect_defs(ss2)
+    lets = collect_lets(ss2)
+    st0 = {code: [], jumps: [], locs: [], nloc: 0, strs: [], fn_ids: [], fns: [], lam_n: 0, caps: [], gids: []}
+    st1 = foldl(defs, st0, register_def)
+    st1b = foldl(lets, st1, register_let)
+    st1c = foldl(defs, st1b, lift_def)
+    st1d = foldl(lets, st1c, lift_let)
+    st2 = foldl(defs, reset_lam(st1d), compile_def)
+    st3 = if list_len(lets) == 0:
+        st2
+    else:
+        compile_boot(st2, lets)
+    packed = foldl(st3.fns, {code: [], strs: st3.strs, fns: [], fn_ids: st3.fn_ids}, concat_one)
+    mid = al_get(st3.fn_ids, "main", 0)
+    mid2 = if list_len(lets) == 0:
+        mid
+    else:
+        al_get(st3.fn_ids, "$boot", mid)
+    {code: packed.code, strs: packed.strs, fns: packed.fns, main_id: mid2}
+
+def boot_let(acc, w):
+    s1 = bc_expr(acc, w.e)
+    gi = al_get(s1.gids, w.name, 0)
+    emit2(s1, op_gstore(), gi)
+
+def compile_boot(st, lets):
+    st1 = register_def(st, {name: "$boot", ps: [], body: [], eff: [], tot: False, once_ps: [], ln: 1, cl: 1, fl: ""})
+    inner = empty_inner([], st1)
+    inner2 = foldl(lets, inner, boot_let)
+    inner3 = emit3(inner2, op_callg(), al_get(inner2.fn_ids, "main", 0), 0)
+    inner4 = emit1(inner3, op_ret())
+    f = {name: "$boot", params: [], code: inner4.code, jumps: inner4.jumps, nloc: inner4.nloc}
+    {code: st1.code, jumps: st1.jumps, locs: st1.locs, nloc: st1.nloc, strs: inner4.strs, fn_ids: inner4.fn_ids, fns: set_fn(inner4.fns, "$boot", f), lam_n: inner4.lam_n, caps: st1.caps, gids: inner4.gids}
+
+def c_esc_step(acc, ch):
+    if ch == "\\":
+        cat(acc, "\\\\")
+    elif ch == "\"":
+        cat(acc, "\\\"")
+    elif ch == "\n":
+        cat(acc, "\\n")
+    elif ch == "\t":
+        cat(acc, "\\t")
+    else:
+        cat(acc, ch)
+
+def c_str(s):
+    cat3("\"", foldl(chars(s), "", c_esc_step), "\"")
+
+def int_txt(x):
+    int_to_text(x)
+
+def join_ints(xs):
+    if list_len(xs) == 0:
+        "0"
+    else:
+        join(map(xs, int_txt), ", ")
+
+def c_fn_init(f):
+    join(["{", c_str(f.name), ", ", int_to_text(f.entry), ", ", int_to_text(f.arity), ", ", int_to_text(f.nlocals), "}"], "")
+
+def emit_bc_c_text(img):
+    strs = if list_len(img.strs) == 0:
+        "\"\""
+    else:
+        join(map(img.strs, c_str), ", ")
+    fns = if list_len(img.fns) == 0:
+        "{\"\", 0, 0, 0}"
+    else:
+        join(map(img.fns, c_fn_init), ", ")
+    join([
+        "\nstatic int _h2o_code[] = { ", join_ints(img.code), " };\n",
+        "static const char *_h2o_strs[] = { ", strs, " };\n",
+        "static VMFn _h2o_fns[] = { ", fns, " };\n",
+        "int main(int argc, char **argv){\n",
+        "    h2o_set_argv(argc, argv);\n",
+        "    VMProg p = {\n",
+        "        _h2o_code, (int)(sizeof _h2o_code/sizeof _h2o_code[0]),\n",
+        "        _h2o_strs, (int)(sizeof _h2o_strs/sizeof *_h2o_strs),\n",
+        "        _h2o_fns, (int)(sizeof _h2o_fns/sizeof *_h2o_fns),\n",
+        "        ", int_to_text(img.main_id), "\n",
+        "    };\n",
+        "    return vm_run(p);\n",
+        "}\n"
+    ], "")

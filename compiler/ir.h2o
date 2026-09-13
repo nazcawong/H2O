@@ -1,0 +1,62 @@
+# ANF-ish IR dump。BH 子集。Python／C／bytecode 後端都應經過這層的文字形。
+
+def ir_e(e):
+    match e:
+        case NInt(x):
+            cat("IInt ", int_to_text(x))
+        case NText(s):
+            cat("IText ", s)
+        case NBool(b):
+            if b:
+                "ITrue"
+            else:
+                "IFalse"
+        case NVar(s):
+            cat("IVar ", s)
+        case NUnit(z):
+            "IUnit"
+        case NCall(w):
+            cat3("ICall ", ir_e(w.fun), cat(" ", ir_es(w.args)))
+        case NField(w):
+            cat3("IField ", ir_e(w.obj), cat(".", w.name))
+        case NBin(w):
+            cat3("IBin ", w.op, cat3(" ", ir_e(w.l), cat(" ", ir_e(w.r))))
+        case NUn(w):
+            cat3("IUn ", w.op, cat(" ", ir_e(w.e)))
+        case NList(xs):
+            cat("IList ", ir_es(xs))
+        case NIf(w):
+            cat3("IIf ", ir_e(w.cond), "")
+        case NMatch(w):
+            cat("IMatch ", ir_e(w.e))
+        case NFn(w):
+            cat("ILam ", ir_e(w.body))
+        case NRec(w):
+            "IRec"
+        case NHandle(w):
+            cat("IHandle ", ir_e(w.e))
+        case NWith(w):
+            "IWith"
+        case NBlk(ss):
+            "IBlk"
+        case NFstr(ps):
+            "IFstr"
+        case _:
+            "IOther"
+
+def ir_es(xs):
+    join(map(xs, ir_e), " ")
+
+def ir_stmt(s):
+    match s:
+        case DDef(w):
+            cat3("IDef ", w.name, cat3(" ", join(w.ps, ","), cat("\n  ", join(map(w.body, ir_stmt), "\n  "))))
+        case DLet(w):
+            cat3("ILet ", w.name, cat(" = ", ir_e(w.e)))
+        case DExp(e):
+            cat("IExp ", ir_e(e))
+        case _:
+            "ISkip"
+
+def dump_ir(ss):
+    join(map(ss, ir_stmt), "\n")

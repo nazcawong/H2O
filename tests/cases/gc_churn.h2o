@@ -1,0 +1,14 @@
+def churn(acc, i):
+    xs = range(4000)
+    acc + list_len(xs)
+
+def main():
+    foldl(range(80), 0, churn)
+    a = gc()
+    foldl(range(80), 0, churn)
+    b = gc()
+    if b <= a + 80:
+        write_out("gc-ok\n")
+    else:
+        write_out(cat(cat("gc-bad ", int_to_text(a)), cat(" ", int_to_text(b))))
+        write_out("\n")

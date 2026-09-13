@@ -1,0 +1,13 @@
+# 測試輔助。失敗則 die。
+
+def assert_eq(a, b, msg: Text) -> ():
+    if a == b:
+        ()
+    else:
+        die(msg)
+
+def assert_true(b: Bool, msg: Text) -> ():
+    if b:
+        ()
+    else:
+        die(msg)

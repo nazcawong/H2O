@@ -1,0 +1,9 @@
+# 給 examples/main.h2o 匯入。v0.2 模組驗收。
+
+pub type User = {name: Text, active: Bool}
+
+pub def active_names(users: List[User]) -> Text:
+    users
+        |> filter(_.active)
+        |> map(_.name)
+        |> join(", ")

@@ -1,0 +1,3 @@
+def main() -> {IO} ():
+    v: Vect[S[Z], Text] = vect(["ok"])
+    println(vect_head(v))

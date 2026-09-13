@@ -1,0 +1,23 @@
+第 2 課  條件
+EN: Lesson 2  conditionals
+
+and / or / not 是英文詞，不是 && || !。
+條件外面不要括號。區塊靠 4 空格。
+
+  if 3 > 1 and 2 != 0:
+      "yes"
+  else:
+      "no"
+
+錯的寫法（會被拒絕）：
+
+  if (x):          條件不要括號
+  if x && y:       沒有 &&
+
+elif 接在 if 後面。沒有 switch。
+
+練習：
+
+  1) 寫一段 if：n = 4，若 n > 0 印 "pos"，否則印 "no"
+     （先 n = 4，再 if n > 0: ...  記得空行結束區塊）
+  2) 用 not True 看結果

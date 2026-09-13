@@ -1,0 +1,4 @@
+from hide import shown
+
+def main():
+    println(shown())

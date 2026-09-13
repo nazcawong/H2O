@@ -1,0 +1,13 @@
+# v0.2 驗收：把 core0_hello 拆檔。
+#   ./h2o run examples/main.h2o
+
+from user import User, active_names
+
+def main():
+    users = [
+        {name: "Ada", active: True},
+        {name: "Grace", active: False},
+        {name: "Edsger", active: True},
+    ]
+    if users != [] and active_names(users) != "":
+        println(f"active: {active_names(users)}")

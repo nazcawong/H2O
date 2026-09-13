@@ -1,0 +1,4 @@
+# P3：純 bytecode 子集（main 裡只有整數與 println）。
+
+def main() -> {IO} ():
+    println(1 + 2)

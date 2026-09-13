@@ -1,0 +1,8 @@
+# Systems：從 H2O 呼叫 C（libc abs）。包裝是普通 def，沒有新語法。
+#   h2o run examples/ffi.h2o
+
+def c_abs(x: Int) -> Int:
+    prim.ffi_call("c", "abs", x)
+
+def main() -> {IO} ():
+    println(c_abs(-7))

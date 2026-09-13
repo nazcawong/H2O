@@ -1,0 +1,17 @@
+#!/bin/sh
+# Daily entry is bin/h2o. If missing, compile compiler/seed.c with cc.
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+if [ -n "${H2O_VM-}" ]; then
+	if [ -x "$H2O_VM" ]; then
+		exec "$H2O_VM" "$@"
+	fi
+	echo "H2O_VM is not executable: $H2O_VM" >&2
+	exit 1
+fi
+
+IMG="$ROOT/bin/h2o"
+if [ ! -x "$IMG" ]; then
+	sh "$ROOT/compiler/seed.sh" || exit 1
+fi
+exec "$IMG" "$@"

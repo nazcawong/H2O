@@ -1,0 +1,28 @@
+trait Functor[F[_]]:
+    def map[A, B](fa: F[A], f: A -> B) -> F[B]
+
+impl Functor[List]:
+    def map(xs, f):
+        match xs:
+            case []:
+                []
+            case [x, *rest]:
+                [f(x), *map(rest, f)]
+
+impl Functor[Maybe]:
+    def map(mx, f):
+        match mx:
+            case None:
+                None
+            case Some(x):
+                Some(f(x))
+
+def main():
+    a = Functor.map(Some(1), fn(x): x + 1)
+    b = Functor.map([1, 2], fn(x): x * 10)
+    match a:
+        case Some(n):
+            if n == 2 and b == [10, 20]:
+                println("functor-2")
+        case None:
+            println("none")

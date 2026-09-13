@@ -1,0 +1,7 @@
+# V0：bytecode 呼叫幀。add 是另一個 def，必須走 OP_CALLG。
+
+def add(x, y):
+    x + y
+
+def main() -> {IO} ():
+    println(add(1, 2))

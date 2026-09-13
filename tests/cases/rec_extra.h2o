@@ -1,0 +1,5 @@
+def f(p: {name: Text}) -> Text:
+    p.name
+
+def main():
+    println(f({name: "Ada", age: 1}))

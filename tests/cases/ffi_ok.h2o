@@ -1,0 +1,5 @@
+def c_abs(x: Int) -> Int:
+    prim.ffi_call("c", "abs", x)
+
+def main() -> {IO} ():
+    println(c_abs(-7))

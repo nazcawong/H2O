@@ -1,0 +1,8 @@
+type Color:
+    Red
+    Blue
+
+def f(c: Color) -> Int:
+    match c:
+        case Red:
+            1

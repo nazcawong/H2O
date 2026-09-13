@@ -1,0 +1,37 @@
+# h2oc fmt — Core 1：去掉行尾空白與檔尾空行，保證結尾換行。
+
+def rstrip_n(s, n):
+    if n == 0:
+        ""
+    else:
+        ch = slice_text(s, n - 1, n)
+        if ch == " " or ch == "\t":
+            rstrip_n(s, n - 1)
+        else:
+            slice_text(s, 0, n)
+
+def rstrip_line(s):
+    rstrip_n(s, text_len(s))
+
+def drop_trail(xs):
+    match xs:
+        case []:
+            []
+        case [x]:
+            if x == "":
+                []
+            else:
+                [x]
+        case [x, *rest]:
+            r = drop_trail(rest)
+            if list_len(r) == 0 and x == "":
+                []
+            else:
+                [x, *r]
+
+def fmt_text(src):
+    kept = drop_trail(map(src_lines(src), rstrip_line))
+    if list_len(kept) == 0:
+        ""
+    else:
+        cat(join(kept, "\n"), "\n")

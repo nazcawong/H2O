@@ -1,0 +1,545 @@
+# native C emit — each H2O def is a C function over Val. BH.
+
+def nat_ident(s):
+    if s == "main":
+        "h2o_main"
+    else:
+        cat("h2o_", s)
+
+def nat_var(s):
+    cat("v_", s)
+
+def nat_has(xs, s):
+    any(xs, fn(x): x == s)
+
+def nat_add(xs, s):
+    if nat_has(xs, s):
+        xs
+    else:
+        [*xs, s]
+
+def nat_globals(names):
+    [*names, "True", "False", "None", "io", "State", "Except", "Stream", "conc", "prim"]
+
+def nat_bid(s):
+    builtin_of(s)
+
+def nat_mod_bid(mod, name):
+    if mod == "io" and name == "read_file":
+        Some(10)
+    elif mod == "io" and name == "write_file":
+        Some(11)
+    elif mod == "io" and name == "open":
+        Some(19)
+    elif mod == "io" and name == "println":
+        Some(12)
+    elif mod == "State" and name == "get":
+        Some(20)
+    elif mod == "State" and name == "put":
+        Some(21)
+    elif mod == "State" and name == "run":
+        Some(22)
+    elif mod == "Except" and name == "to_result":
+        Some(23)
+    elif mod == "Stream" and name == "iterate":
+        Some(24)
+    elif mod == "Stream" and name == "take":
+        Some(25)
+    elif mod == "Stream" and name == "map":
+        Some(26)
+    elif mod == "conc" and name == "together":
+        Some(27)
+    elif mod == "prim" and name == "ffi_call":
+        Some(17)
+    else:
+        None
+
+def nat_binop(op):
+    if op == "+":
+        "h2o_add"
+    elif op == "-":
+        "h2o_sub"
+    elif op == "*":
+        "h2o_mul"
+    elif op == "/" or op == "//":
+        "h2o_div"
+    elif op == "==":
+        "h2o_eq"
+    elif op == "!=":
+        "h2o_ne"
+    elif op == "<":
+        "h2o_lt"
+    elif op == "<=":
+        "h2o_le"
+    elif op == ">":
+        "h2o_gt"
+    elif op == ">=":
+        "h2o_ge"
+    elif op == "and":
+        "h2o_and"
+    elif op == "or":
+        "h2o_or"
+    else:
+        "h2o_eq"
+
+def nat_top_acc(acc, s):
+    match s:
+        case DDef(w):
+            [*acc, w]
+        case _:
+            acc
+
+def nat_tops(ss):
+    foldl(ss, [], nat_top_acc)
+
+def nat_fn_id(tab, s):
+    match tab:
+        case []:
+            -1
+        case [b, *rest]:
+            if b.name == s:
+                b.id
+            else:
+                nat_fn_id(rest, s)
+
+def nat_mk_tab_acc(acc, w):
+    [*acc, {name: w.name, id: list_len(acc), cname: nat_ident(w.name)}]
+
+def nat_mk_tab(defs):
+    foldl(defs, [], nat_mk_tab_acc)
+
+def nat_st(h, e, n, fns, lid, env, tab, lams):
+    {h: h, e: e, n: n, fns: fns, lid: lid, env: env, tab: tab, lams: lams}
+
+def nat_bind(env, s):
+    [s, *env]
+
+def nat_in_env(env, s):
+    nat_has(env, s)
+
+def nat_load(env, tab, s):
+    if s == "True":
+        "V_B(1)"
+    elif s == "False":
+        "V_B(0)"
+    elif s == "None":
+        "V_CTOR(\"None\", 0, 0)"
+    elif nat_in_env(env, s):
+        nat_var(s)
+    elif nat_fn_id(tab, s) >= 0:
+        join(["h2o_clo(", int_to_text(nat_fn_id(tab, s)), ", 0, 0)"], "")
+    else:
+        "V_U()"
+
+def nat_t(n):
+    cat("t", int_to_text(n))
+
+def nat_expr(e, st):
+    match e:
+        case NInt(x):
+            nat_st(st.h, cat("V_I(", cat(int_to_text(x), ")")), st.n, st.fns, st.lid, st.env, st.tab, st.lams)
+        case NText(s):
+            nat_st(st.h, cat("V_T(", cat(c_str(s), ")")), st.n, st.fns, st.lid, st.env, st.tab, st.lams)
+        case NBool(b):
+            if b:
+                nat_st(st.h, "V_B(1)", st.n, st.fns, st.lid, st.env, st.tab, st.lams)
+            else:
+                nat_st(st.h, "V_B(0)", st.n, st.fns, st.lid, st.env, st.tab, st.lams)
+        case NUnit(z):
+            nat_st(st.h, "V_U()", st.n, st.fns, st.lid, st.env, st.tab, st.lams)
+        case NVar(s):
+            nat_st(st.h, nat_load(st.env, st.tab, s), st.n, st.fns, st.lid, st.env, st.tab, st.lams)
+        case NBin(w):
+            nat_bin(w, st)
+        case NUn(w):
+            nat_un(w, st)
+        case NCall(w):
+            nat_call(w, st)
+        case NField(w):
+            nat_field(w, st)
+        case NIdx(w):
+            nat_idx(w, st)
+        case NList(xs):
+            nat_list(xs, st)
+        case NRec(w):
+            nat_rec(w, st)
+        case NIf(w):
+            nat_if(w, st)
+        case NMatch(w):
+            nat_match(w, st)
+        case NFn(w):
+            nat_fn(w, st)
+        case NWith(w):
+            nat_with(w, st)
+        case NFstr(ps):
+            nat_fstr(ps, st)
+        case NBlk(ss):
+            nat_blk(ss, st)
+        case NHandle(w):
+            nat_expr(w.e, st)
+        case NSpread(x):
+            nat_expr(x, st)
+        case NUpd(w):
+            nat_expr(w.obj, st)
+        case _:
+            nat_st(st.h, "V_U()", st.n, st.fns, st.lid, st.env, st.tab, st.lams)
+
+def nat_bin(w, st):
+    a = nat_expr(w.l, st)
+    b = nat_expr(w.r, a)
+    tn = nat_t(b.n)
+    line = join(["    Val ", tn, " = ", nat_binop(w.op), "(", a.e, ", ", b.e, ");\n"], "")
+    nat_st(cat(b.h, line), tn, b.n + 1, b.fns, b.lid, b.env, b.tab, b.lams)
+
+def nat_un(w, st):
+    a = nat_expr(w.e, st)
+    tn = nat_t(a.n)
+    unf = if w.op == "not":
+        "h2o_not"
+    else:
+        "h2o_neg"
+    line = join(["    Val ", tn, " = ", unf, "(", a.e, ");\n"], "")
+    nat_st(cat(a.h, line), tn, a.n + 1, a.fns, a.lid, a.env, a.tab, a.lams)
+
+def nat_args(xs, st):
+    foldl(xs, {h: st.h, n: st.n, fns: st.fns, lid: st.lid, es: [], lams: st.lams}, nat_arg_one(st.env, st.tab))
+
+def nat_arg_one(env, tab):
+    fn(acc, x):
+        r = nat_expr(x, nat_st(acc.h, "", acc.n, acc.fns, acc.lid, env, tab, acc.lams))
+        {h: r.h, n: r.n, fns: r.fns, lid: r.lid, es: [*acc.es, r.e], lams: r.lams}
+
+def nat_av(es, n):
+    an = cat("a", int_to_text(n))
+    k = list_len(es)
+    if k == 0:
+        {d: "", p: "0", n: n}
+    else:
+        sets = join(map(range(k), fn(i): join(["    ", an, "[", int_to_text(i), "] = ", nth(es, i), ";\n"], "")), "")
+        {d: cat(join(["    Val ", an, "[", int_to_text(k), "];\n"], ""), sets), p: an, n: n}
+
+def nat_call(w, st):
+    match w.fun:
+        case NVar(s):
+            nat_call_var(s, w.args, st)
+        case NField(f):
+            nat_call_field(f, w.args, st)
+        case _:
+            fe = nat_expr(w.fun, st)
+            ar = nat_args(w.args, fe)
+            av = nat_av(ar.es, ar.n)
+            tn = nat_t(av.n)
+            line = join([av.d, "    Val ", tn, " = clo_apply(", fe.e, ", ", av.p, ", ", int_to_text(list_len(w.args)), ");\n"], "")
+            nat_st(cat(ar.h, line), tn, av.n + 1, ar.fns, ar.lid, st.env, st.tab, ar.lams)
+
+def nat_call_var(s, args, st):
+    if s == "cat" and list_len(args) == 2:
+        nat_bin({op: "+", l: nth(args, 0), r: nth(args, 1)}, st)
+    else:
+        match nat_bid(s):
+            case Some(bid):
+                ar = nat_args(args, st)
+                av = nat_av(ar.es, ar.n)
+                tn = nat_t(av.n)
+                line = join([av.d, "    Val ", tn, " = h2o_do_builtin(", int_to_text(bid), ", ", av.p, ", ", int_to_text(list_len(args)), ");\n"], "")
+                nat_st(cat(ar.h, line), tn, av.n + 1, ar.fns, ar.lid, st.env, st.tab, ar.lams)
+            case None:
+                if is_ctor_name(s) and s != "True" and s != "False" and s != "None" and not nat_in_env(st.env, s) and nat_fn_id(st.tab, s) < 0:
+                    ar = nat_args(args, st)
+                    av = nat_av(ar.es, ar.n)
+                    tn = nat_t(av.n)
+                    line = join([av.d, "    Val ", tn, " = V_CTOR(", c_str(s), ", ", int_to_text(list_len(args)), ", ", av.p, ");\n"], "")
+                    nat_st(cat(ar.h, line), tn, av.n + 1, ar.fns, ar.lid, st.env, st.tab, ar.lams)
+                elif nat_fn_id(st.tab, s) >= 0 and not nat_in_env(st.env, s):
+                    ar = nat_args(args, st)
+                    av = nat_av(ar.es, ar.n)
+                    tn = nat_t(av.n)
+                    line = join([av.d, "    Val ", tn, " = ", nat_ident(s), "(", av.p, ", ", int_to_text(list_len(args)), ", 0, 0);\n"], "")
+                    nat_st(cat(ar.h, line), tn, av.n + 1, ar.fns, ar.lid, st.env, st.tab, ar.lams)
+                else:
+                    ar = nat_args(args, st)
+                    av = nat_av(ar.es, ar.n)
+                    tn = nat_t(av.n)
+                    fv = nat_load(st.env, st.tab, s)
+                    line = join([av.d, "    Val ", tn, " = clo_apply(", fv, ", ", av.p, ", ", int_to_text(list_len(args)), ");\n"], "")
+                    nat_st(cat(ar.h, line), tn, av.n + 1, ar.fns, ar.lid, st.env, st.tab, ar.lams)
+
+def nat_call_field(f, args, st):
+    match f.obj:
+        case NVar(s):
+            match nat_mod_bid(s, f.name):
+                case Some(bid):
+                    ar = nat_args(args, st)
+                    av = nat_av(ar.es, ar.n)
+                    tn = nat_t(av.n)
+                    line = join([av.d, "    Val ", tn, " = h2o_do_builtin(", int_to_text(bid), ", ", av.p, ", ", int_to_text(list_len(args)), ");\n"], "")
+                    nat_st(cat(ar.h, line), tn, av.n + 1, ar.fns, ar.lid, st.env, st.tab, ar.lams)
+                case None:
+                    o = nat_expr(NField(f), st)
+                    ar = nat_args(args, o)
+                    av = nat_av(ar.es, ar.n)
+                    tn = nat_t(av.n)
+                    line = join([av.d, "    Val ", tn, " = clo_apply(", o.e, ", ", av.p, ", ", int_to_text(list_len(args)), ");\n"], "")
+                    nat_st(cat(ar.h, line), tn, av.n + 1, ar.fns, ar.lid, st.env, st.tab, ar.lams)
+        case _:
+            o = nat_expr(NField(f), st)
+            ar = nat_args(args, o)
+            av = nat_av(ar.es, ar.n)
+            tn = nat_t(av.n)
+            line = join([av.d, "    Val ", tn, " = clo_apply(", o.e, ", ", av.p, ", ", int_to_text(list_len(args)), ");\n"], "")
+            nat_st(cat(ar.h, line), tn, av.n + 1, ar.fns, ar.lid, st.env, st.tab, ar.lams)
+
+def nat_field(w, st):
+    match w.obj:
+        case NVar(s):
+            match nat_mod_bid(s, w.name):
+                case Some(bid):
+                    nat_st(st.h, "V_U()", st.n, st.fns, st.lid, st.env, st.tab, st.lams)
+                case None:
+                    o = nat_expr(w.obj, st)
+                    tn = nat_t(o.n)
+                    line = join(["    Val ", tn, " = h2o_field(", o.e, ", ", c_str(w.name), ");\n"], "")
+                    nat_st(cat(o.h, line), tn, o.n + 1, o.fns, o.lid, o.env, o.tab, o.lams)
+        case _:
+            o = nat_expr(w.obj, st)
+            tn = nat_t(o.n)
+            line = join(["    Val ", tn, " = h2o_field(", o.e, ", ", c_str(w.name), ");\n"], "")
+            nat_st(cat(o.h, line), tn, o.n + 1, o.fns, o.lid, o.env, o.tab, o.lams)
+
+def nat_idx(w, st):
+    o = nat_expr(w.obj, st)
+    i = nat_expr(w.i, o)
+    tn = nat_t(i.n)
+    line = join(["    Val ", tn, " = h2o_maybeidx(", o.e, ", ", i.e, ");\n"], "")
+    nat_st(cat(i.h, line), tn, i.n + 1, i.fns, i.lid, i.env, i.tab, i.lams)
+
+def nat_list(xs, st):
+    if list_len(xs) == 0:
+        tn = nat_t(st.n)
+        line = join(["    Val ", tn, " = V_L(lst_new());\n"], "")
+        nat_st(cat(st.h, line), tn, st.n + 1, st.fns, st.lid, st.env, st.tab, st.lams)
+    else:
+        ar = nat_args(xs, st)
+        tn = nat_t(ar.n)
+        ln = cat("lst", int_to_text(ar.n))
+        adds = join(map(ar.es, fn(e): join(["    lst_add(", ln, ", ", e, ");\n"], "")), "")
+        line = join(["    List *", ln, " = lst_new();\n", adds, "    Val ", tn, " = V_L(", ln, ");\n"], "")
+        nat_st(cat(ar.h, line), tn, ar.n + 1, ar.fns, ar.lid, st.env, st.tab, st.lams)
+
+def nat_rec(w, st):
+    ar = nat_args(map(w.fields, nat_kv_e), st)
+    tn = nat_t(ar.n)
+    rn = cat("rec", int_to_text(ar.n))
+    adds = join(map(range(list_len(w.fields)), nat_rec_add(rn, w.fields, ar.es)), "")
+    line = join(["    Rec *", rn, " = rec_new();\n", adds, "    Val ", tn, " = V_R(", rn, ");\n"], "")
+    nat_st(cat(ar.h, line), tn, ar.n + 1, ar.fns, ar.lid, st.env, st.tab, st.lams)
+
+def nat_kv_e(kv):
+    match kv:
+        case NKV(w):
+            w.e
+        case _:
+            NUnit(0)
+
+def nat_rec_add(rn, fields, es):
+    fn(i):
+        kv = nth(fields, i)
+        match kv:
+            case NKV(w):
+                join(["    rec_add(", rn, ", ", c_str(w.name), ", ", nth(es, i), ");\n"], "")
+            case _:
+                ""
+
+def nat_if(w, st):
+    c = nat_expr(w.cond, st)
+    tn = nat_t(c.n)
+    st1 = nat_st("", "", c.n + 1, c.fns, c.lid, c.env, c.tab, c.lams)
+    th = nat_stmts(w.then, st1, True)
+    if w.has:
+        el = nat_stmts(w.else_, th, True)
+        line = join(["    Val ", tn, " = V_U();\n", c.h, "    if (truth(", c.e, ")) {\n", th.h, "        ", tn, " = ", th.e, ";\n    } else {\n", el.h, "        ", tn, " = ", el.e, ";\n    }\n"], "")
+        nat_st(line, tn, el.n, el.fns, el.lid, st.env, st.tab, el.lams)
+    else:
+        line = join(["    Val ", tn, " = V_U();\n", c.h, "    if (truth(", c.e, ")) {\n", th.h, "        ", tn, " = ", th.e, ";\n    }\n"], "")
+        nat_st(line, tn, th.n, th.fns, th.lid, st.env, st.tab, th.lams)
+
+def nat_match(w, st):
+    sc = nat_expr(w.e, st)
+    tn = nat_t(sc.n)
+    tv = cat("m", int_to_text(sc.n))
+    st1 = nat_st("", "", sc.n + 1, sc.fns, sc.lid, sc.env, sc.tab, sc.lams)
+    cs = foldl(w.cases, {h: "", n: st1.n, fns: st1.fns, lid: st1.lid, first: True, lams: st1.lams}, nat_case_step(tn, tv, st.env, st.tab))
+    line = join([sc.h, "    Val ", tv, " = ", sc.e, ";\n    Val ", tn, " = V_U();\n", cs.h], "")
+    nat_st(line, tn, cs.n, cs.fns, cs.lid, st.env, st.tab, cs.lams)
+
+def nat_case_step(tn, tv, env, tab):
+    fn(acc, c):
+        match c:
+            case KCase(w):
+                p = nat_pat(w.pat, tv)
+                st0 = nat_st("", "", acc.n, acc.fns, acc.lid, foldl(p.binds, env, fn(e, b): nat_bind(e, b)), tab, acc.lams)
+                body = nat_stmts(w.body, st0, True)
+                kw = if acc.first:
+                    "    if ("
+                else:
+                    "    else if ("
+                binds = join(map(p.lets, fn(x): cat("        ", x)), "")
+                h = join([acc.h, kw, p.cond, ") {\n", binds, body.h, "        ", tn, " = ", body.e, ";\n    }\n"], "")
+                {h: h, n: body.n, fns: body.fns, lid: body.lid, first: False, lams: body.lams}
+            case _:
+                acc
+
+def nat_pat(p, tv):
+    match p:
+        case QWild(z):
+            {cond: "1", binds: [], lets: []}
+        case QVar(s):
+            {cond: "1", binds: [s], lets: [join(["Val ", nat_var(s), " = ", tv, ";\n"], "")]}
+        case QInt(x):
+            {cond: join([tv, ".k==K_I && ", tv, ".i==", int_to_text(x)], ""), binds: [], lets: []}
+        case QText(s):
+            {cond: join([tv, ".k==K_T && ", tv, ".s && strcmp(", tv, ".s, ", c_str(s), ")==0"], ""), binds: [], lets: []}
+        case QCtor(w):
+            nat_pctor(w, tv)
+        case QList(w):
+            nat_plist(w, tv)
+        case _:
+            {cond: "1", binds: [], lets: []}
+
+def nat_pctor(w, tv):
+    tagc = join(["h2o_istag(", tv, ", ", c_str(w.name), ")"], "")
+    if w.has:
+        inner = nat_pat(w.arg, join(["h2o_geti(", tv, ", 0)"], ""))
+        {cond: cat3(tagc, " && ", inner.cond), binds: inner.binds, lets: [*inner.lets]}
+    else:
+        {cond: tagc, binds: [], lets: []}
+
+def nat_plist(w, tv):
+    n = list_len(w.items)
+    if n == 0 and not w.has:
+        {cond: join([tv, ".k==K_L && ", tv, ".l && ", tv, ".l->n==0"], ""), binds: [], lets: []}
+    else:
+        {cond: join([tv, ".k==K_L && ", tv, ".l && ", tv, ".l->n>=", int_to_text(n)], ""), binds: [], lets: []}
+
+def nat_fn(w, st):
+    idn = st.lid
+    cname = cat("h2o_lam_", int_to_text(idn))
+    body_e = w.body
+    ss = match body_e:
+        case NBlk(xs):
+            xs
+        case _:
+            [DExp(body_e)]
+    env2 = foldl(w.ps, st.env, fn(e, p): nat_bind(e, p))
+    st1 = nat_st("", "", 0, "", idn + 1, env2, st.tab, [*st.lams, cname])
+    b = nat_stmts(ss, st1, True)
+    heads = join(map(range(list_len(w.ps)), nat_param_line(w.ps)), "")
+    fun = join(["static Val ", cname, "(Val *args, int nargs, Val *caps, int ncap){\n", heads, b.h, "    return ", b.e, ";\n}\n"], "")
+    tn = nat_t(st.n)
+    line = join(["    Val ", tn, " = h2o_clo(", int_to_text(idn), ", 0, 0);\n"], "")
+    nat_st(cat(st.h, line), tn, st.n + 1, cat3(st.fns, fun, b.fns), b.lid, st.env, st.tab, b.lams)
+
+def nat_param_line(ps):
+    fn(i):
+        join(["    Val ", nat_var(nth(ps, i)), " = nargs>", int_to_text(i), " ? args[", int_to_text(i), "] : V_U();\n"], "")
+
+def nat_with(w, st):
+    su = nat_expr(w.setup, st)
+    env2 = nat_bind(st.env, w.var)
+    tn = nat_t(su.n)
+    bind = join(["    Val ", nat_var(w.var), " = ", su.e, ";\n    Val ", tn, " = V_U();\n"], "")
+    st1 = nat_st("", "", su.n + 1, su.fns, su.lid, env2, st.tab, st.lams)
+    body = nat_stmts(w.body, st1, True)
+    close = join(["    { Val _cf = ", nat_var(w.var), "; h2o_do_builtin(30, &_cf, 1); }\n"], "")
+    line = join([su.h, bind, body.h, "    ", tn, " = ", body.e, ";\n", close], "")
+    nat_st(line, tn, body.n, body.fns, body.lid, st.env, st.tab, st.lams)
+
+def nat_fstr(ps, st):
+    foldl(ps, nat_st(st.h, "V_T(\"\")", st.n, st.fns, st.lid, st.env, st.tab, st.lams), nat_fpart)
+
+def nat_fpart(st, p):
+    match p:
+        case FLit(s):
+            tn = nat_t(st.n)
+            line = join(["    Val ", tn, " = h2o_add(", st.e, ", V_T(", c_str(s), "));\n"], "")
+            nat_st(cat(st.h, line), tn, st.n + 1, st.fns, st.lid, st.env, st.tab, st.lams)
+        case FExp(e):
+            r = nat_expr(e, st)
+            tn = nat_t(r.n)
+            line = join(["    Val ", tn, " = h2o_add(", st.e, ", ", r.e, ");\n"], "")
+            nat_st(cat(r.h, line), tn, r.n + 1, r.fns, r.lid, r.env, r.tab, r.lams)
+        case _:
+            st
+
+def nat_blk(ss, st):
+    nat_stmts(ss, st, True)
+
+def nat_stmts(ss, st, ret):
+    match ss:
+        case []:
+            nat_st(st.h, "V_U()", st.n, st.fns, st.lid, st.env, st.tab, st.lams)
+        case [s]:
+            nat_stmt(s, st, ret)
+        case [s, *rest]:
+            a = nat_stmt(s, st, False)
+            nat_stmts(rest, a, ret)
+
+def nat_stmt(s, st, ret):
+    match s:
+        case DLet(w):
+            e = nat_expr(w.e, st)
+            line = join(["    Val ", nat_var(w.name), " = ", e.e, ";\n"], "")
+            st2 = nat_st(cat(e.h, line), nat_var(w.name), e.n, e.fns, e.lid, nat_bind(e.env, w.name), e.tab, e.lams)
+            st2
+        case DExp(e):
+            nat_expr(e, st)
+        case DDef(w):
+            nat_st(st.h, "V_U()", st.n, st.fns, st.lid, st.env, st.tab, st.lams)
+        case _:
+            nat_st(st.h, "V_U()", st.n, st.fns, st.lid, st.env, st.tab, st.lams)
+
+def nat_emit_def(w, tab, lid0):
+    env0 = foldl(w.ps, [], fn(e, p): nat_bind(e, p))
+    st0 = nat_st("", "", 0, "", lid0, env0, tab, [])
+    b = nat_stmts(w.body, st0, True)
+    heads = join(map(range(list_len(w.ps)), nat_param_line(w.ps)), "")
+    fun = join(["static Val ", nat_ident(w.name), "(Val *args, int nargs, Val *caps, int ncap){\n", heads, b.h, "    return ", b.e, ";\n}\n"], "")
+    {c: cat(b.fns, fun), lid: b.lid, lams: b.lams}
+
+def nat_proto(w):
+    join(["static Val ", nat_ident(w.name), "(Val *args, int nargs, Val *caps, int ncap);\n"], "")
+
+def nat_tab_name(b):
+    b.cname
+
+def emit_nat_c_text(ss):
+    defs = nat_tops(ss)
+    tab = nat_mk_tab(defs)
+    k = list_len(defs)
+    acc = foldl(defs, {c: "", lid: k, lams: []}, nat_emit_one(tab))
+    protos = join(map(defs, nat_proto), "")
+    lam_protos = join(map(acc.lams, nat_lam_proto), "")
+    names = join([*map(tab, nat_tab_name), *acc.lams], ", ")
+    nfn = k + list_len(acc.lams)
+    main_id = nat_fn_id(tab, "main")
+    join([
+        "\n",
+        protos,
+        lam_protos,
+        acc.c,
+        "static H2oNat h2o_nat_fns[] = { ", names, " };\n",
+        "int main(int argc, char **argv){\n",
+        "    h2o_set_argv(argc, argv);\n",
+        "    h2o_set_nat(h2o_nat_fns, ", int_to_text(nfn), ");\n",
+        "    h2o_nat_fns[", int_to_text(main_id), "](0, 0, 0, 0);\n",
+        "    return 0;\n",
+        "}\n"
+    ], "")
+
+def nat_lam_proto(nm):
+    join(["static Val ", nm, "(Val *args, int nargs, Val *caps, int ncap);\n"], "")
+
+def nat_emit_one(tab):
+    fn(acc, w):
+        d = nat_emit_def(w, tab, acc.lid)
+        {c: cat(acc.c, d.c), lid: d.lid, lams: [*acc.lams, *d.lams]}

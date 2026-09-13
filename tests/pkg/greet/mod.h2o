@@ -1,0 +1,5 @@
+pub def hi():
+    "greet-ok"
+
+def secret():
+    "no"

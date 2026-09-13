@@ -1,0 +1,1887 @@
+# h2oc HM — unification + 推導。BH 子集。錯誤用人話，不出現 TArrow。
+
+def st_copy(n, subst, env, adts, ctors, at, eff, traits, impls):
+    {n: n, subst: subst, env: env, adts: adts, ctors: ctors, at: at, eff: eff, traits: traits, impls: impls}
+
+def st_n(st, n):
+    st_copy(n, st.subst, st.env, st.adts, st.ctors, st.at, st.eff, st.traits, st.impls)
+
+def st_subst(st, subst):
+    st_copy(st.n, subst, st.env, st.adts, st.ctors, st.at, st.eff, st.traits, st.impls)
+
+def st_env(st, env):
+    st_copy(st.n, st.subst, env, st.adts, st.ctors, st.at, st.eff, st.traits, st.impls)
+
+def st_at(st, at):
+    st_copy(st.n, st.subst, st.env, st.adts, st.ctors, at, st.eff, st.traits, st.impls)
+
+def st_eff(st, eff):
+    st_copy(st.n, st.subst, st.env, st.adts, st.ctors, st.at, eff, st.traits, st.impls)
+
+def st_adts(st, adts, ctors):
+    st_copy(st.n, st.subst, st.env, adts, ctors, st.at, st.eff, st.traits, st.impls)
+
+def st_traits(st, traits):
+    st_copy(st.n, st.subst, st.env, st.adts, st.ctors, st.at, st.eff, traits, st.impls)
+
+def st_impls(st, impls):
+    st_copy(st.n, st.subst, st.env, st.adts, st.ctors, st.at, st.eff, st.traits, impls)
+
+def at_tok(ln, cl, fl):
+    {k: "", v: "", n: 0, line: ln, col: cl, file: fl}
+
+def ty_fresh(st):
+    {t: TVar({n: st.n}), st: st_n(st, st.n + 1)}
+
+def subst_get(xs, k):
+    match xs:
+        case []:
+            None
+        case [b, *rest]:
+            if b.k == k:
+                Some(b.v)
+            else:
+                subst_get(rest, k)
+
+def ty_walk(t, subst, d):
+    if d <= 0:
+        t
+    else:
+        match t:
+            case TVar(w):
+                match subst_get(subst, w.n):
+                    case Some(u):
+                        ty_walk(u, subst, d - 1)
+                    case None:
+                        t
+            case _:
+                t
+
+def ty_walks(t, st):
+    ty_walk(t, st.subst, 64)
+
+def ty_apply_arg(subst):
+    fn(x): ty_apply(x, subst)
+
+def ty_apply_field(subst):
+    fn(f): {name: f.name, t: ty_apply(f.t, subst)}
+
+def ty_apply(t, subst):
+    t2 = ty_walk(t, subst, 64)
+    match t2:
+        case TList(w):
+            TList({a: ty_apply(w.a, subst)})
+        case TMaybe(w):
+            TMaybe({a: ty_apply(w.a, subst)})
+        case TResult(w):
+            TResult({a: ty_apply(w.a, subst), e: ty_apply(w.e, subst)})
+        case TFun(w):
+            TFun({args: map(w.args, ty_apply_arg(subst)), ret: ty_apply(w.ret, subst), eff: w.eff})
+        case TApp(w):
+            TApp({f: w.f, args: map(w.args, ty_apply_arg(subst))})
+        case TRec(w):
+            TRec({fs: map(w.fs, ty_apply_field(subst)), open: w.open})
+        case _:
+            t2
+
+def zonk_bind(subst):
+    fn(b): {name: b.name, gen: b.gen, vars: b.vars, t: ty_apply(b.t, subst), tcs: b.tcs}
+
+def zonk(st):
+    st_subst(st_env(st, map(st.env, zonk_bind(st.subst))), [])
+
+def ty_occurs(id, t, subst):
+    t2 = ty_walk(t, subst, 64)
+    match t2:
+        case TVar(w):
+            w.n == id
+        case TList(w):
+            ty_occurs(id, w.a, subst)
+        case TMaybe(w):
+            ty_occurs(id, w.a, subst)
+        case TResult(w):
+            ty_occurs(id, w.a, subst) or ty_occurs(id, w.e, subst)
+        case TFun(w):
+            ty_occurs(id, w.ret, subst) or any(w.args, fn(x): ty_occurs(id, x, subst))
+        case TApp(w):
+            any(w.args, fn(x): ty_occurs(id, x, subst))
+        case TRec(w):
+            any(w.fs, fn(f): ty_occurs(id, f.t, subst))
+        case _:
+            False
+
+def ty_show(t):
+    match t:
+        case TInt(z):
+            "Int"
+        case TBool(z):
+            "Bool"
+        case TText(z):
+            "Text"
+        case TUnit(z):
+            "()"
+        case TNever(z):
+            "Never"
+        case TList(w):
+            cat3("List[", ty_show(w.a), "]")
+        case TMaybe(w):
+            cat3("Maybe[", ty_show(w.a), "]")
+        case TResult(w):
+            cat3("Result[", ty_show(w.a), cat3(", ", ty_show(w.e), "]"))
+        case TName(w):
+            w.s
+        case TApp(w):
+            join([w.f, "[", join(map(w.args, ty_show), ", "), "]"], "")
+        case TFun(w):
+            cat(join(map(w.args, ty_show_arg), ", "), cat(" -> ", ty_show(w.ret)))
+        case TRec(w):
+            ty_show_rec(w)
+        case TVar(w):
+            slice_text("abcdefghijklmnopqrstuvwxyz", w.n - (w.n / 26) * 26, w.n - (w.n / 26) * 26 + 1)
+        case _:
+            "某個類型"
+
+def rec_show_field(f):
+    f.name
+
+def ty_show_rec(w):
+    ns = join(map(w.fs, rec_show_field), ", ")
+    if w.open:
+        if ns == "":
+            "{...}"
+        else:
+            cat3("{", ns, ", ...}")
+    else:
+        cat3("{", ns, "}")
+
+def ty_show_arg(t):
+    match t:
+        case TFun(w):
+            cat("(", cat(ty_show(t), ")"))
+        case _:
+            ty_show(t)
+
+def ty_mismatch(st, got, want):
+    err(st.at, cat3("這是 ", ty_show(ty_walks(got, st)), cat3("，不能當 ", ty_show(ty_walks(want, st)), " 用")))
+
+def ty_bind(id, t, st):
+    t2 = ty_walks(t, st)
+    match t2:
+        case TVar(w):
+            if w.n == id:
+                st
+            else:
+                st_subst(st, [{k: id, v: t2}, *st.subst])
+        case _:
+            if ty_occurs(id, t2, st.subst):
+                err(st.at, "類型循環")
+            else:
+                st_subst(st, [{k: id, v: t2}, *st.subst])
+
+def adt_find(adts, name):
+    match adts:
+        case []:
+            None
+        case [a, *rest]:
+            if a.name == name:
+                Some(a)
+            else:
+                adt_find(rest, name)
+
+def ty_expand(t, st):
+    t2 = ty_walks(t, st)
+    match t2:
+        case TName(w):
+            match adt_find(st.adts, w.s):
+                case Some(a):
+                    if a.kind == "alias":
+                        a.ty
+                    else:
+                        t2
+                case None:
+                    t2
+        case TApp(w):
+            if w.f == "List" and list_len(w.args) == 1:
+                TList({a: nth(w.args, 0)})
+            elif w.f == "Maybe" and list_len(w.args) == 1:
+                TMaybe({a: nth(w.args, 0)})
+            elif w.f == "Result" and list_len(w.args) == 2:
+                TResult({a: nth(w.args, 0), e: nth(w.args, 1)})
+            else:
+                t2
+        case _:
+            t2
+
+def rec_field(fs, name):
+    match fs:
+        case []:
+            None
+        case [f, *rest]:
+            if f.name == name:
+                Some(f.t)
+            else:
+                rec_field(rest, name)
+
+def rec_same_names(a, b):
+    list_len(a) == list_len(b) and all_in_rec(a, b) and all_in_rec(b, a)
+
+def all_in_rec(xs, ys):
+    not any(xs, fn(f): rec_field(ys, f.name) == None)
+
+def rec_has_extra(fs, gs):
+    any(fs, fn(f): rec_field(gs, f.name) == None)
+
+def rec_put_one(name, t, f):
+    if f.name == name:
+        {name: name, t: t}
+    else:
+        f
+
+def rec_put_map(name, t):
+    fn(f): rec_put_one(name, t, f)
+
+def rec_put(fs, name, t):
+    if rec_field(fs, name) == None:
+        [{name: name, t: t}, *fs]
+    else:
+        map(fs, rec_put_map(name, t))
+
+def rec_merge_one(a, f):
+    rec_put(a, f.name, f.t)
+
+def rec_merge(base, patch):
+    foldl(patch, base, rec_merge_one)
+
+def ty_unify(a, b, st):
+    a2 = ty_expand(a, st)
+    b2 = ty_expand(b, st)
+    match a2:
+        case TNever(z):
+            st
+        case TMiss(z):
+            st
+        case TVar(w):
+            ty_bind(w.n, b2, st)
+        case _:
+            match b2:
+                case TNever(z):
+                    st
+                case TMiss(z):
+                    st
+                case TVar(w):
+                    ty_bind(w.n, a2, st)
+                case TOpen(z):
+                    st
+                case _:
+                    match a2:
+                        case TOpen(z):
+                            st
+                        case TInt(z):
+                            match b2:
+                                case TInt(y):
+                                    st
+                                case _:
+                                    ty_mismatch(st, a2, b2)
+                        case TBool(z):
+                            match b2:
+                                case TBool(y):
+                                    st
+                                case _:
+                                    ty_mismatch(st, a2, b2)
+                        case TText(z):
+                            match b2:
+                                case TText(y):
+                                    st
+                                case _:
+                                    ty_mismatch(st, a2, b2)
+                        case TUnit(z):
+                            match b2:
+                                case TUnit(y):
+                                    st
+                                case _:
+                                    ty_mismatch(st, a2, b2)
+                        case TList(w):
+                            match b2:
+                                case TList(u):
+                                    ty_unify(w.a, u.a, st)
+                                case _:
+                                    ty_mismatch(st, a2, b2)
+                        case TMaybe(w):
+                            match b2:
+                                case TMaybe(u):
+                                    ty_unify(w.a, u.a, st)
+                                case _:
+                                    ty_mismatch(st, a2, b2)
+                        case TResult(w):
+                            match b2:
+                                case TResult(u):
+                                    ty_unify(w.e, u.e, ty_unify(w.a, u.a, st))
+                                case _:
+                                    ty_mismatch(st, a2, b2)
+                        case TName(w):
+                            match b2:
+                                case TName(u):
+                                    if w.s == u.s:
+                                        st
+                                    else:
+                                        ty_mismatch(st, a2, b2)
+                                case TRec(u):
+                                    match ty_expand(a2, st):
+                                        case TRec(z):
+                                            ty_unify(TRec(z), b2, st)
+                                        case TName(z):
+                                            ty_mismatch(st, a2, b2)
+                                        case _:
+                                            ty_mismatch(st, a2, b2)
+                                case _:
+                                    ty_mismatch(st, a2, b2)
+                        case TFun(w):
+                            match b2:
+                                case TFun(u):
+                                    if list_len(w.args) != list_len(u.args):
+                                        err(st.at, "參數個數不對")
+                                    else:
+                                        st2 = ty_unify_list(w.args, u.args, st)
+                                        ty_unify(w.ret, u.ret, st2)
+                                case _:
+                                    ty_mismatch(st, a2, b2)
+                        case TRec(w):
+                            match b2:
+                                case TRec(u):
+                                    st2 = ty_unify_rec(u.fs, w.fs, ty_unify_rec(w.fs, u.fs, st))
+                                    both_open = w.open and u.open
+                                    if rec_has_extra(w.fs, u.fs) and not both_open:
+                                        ty_mismatch(st, a2, b2)
+                                    elif rec_has_extra(u.fs, w.fs) and not both_open:
+                                        ty_mismatch(st, a2, b2)
+                                    else:
+                                        st2
+                                case TName(u):
+                                    match ty_expand(b2, st):
+                                        case TRec(z):
+                                            ty_unify(a2, TRec(z), st)
+                                        case _:
+                                            ty_mismatch(st, a2, b2)
+                                case _:
+                                    ty_mismatch(st, a2, b2)
+                        case TApp(w):
+                            match b2:
+                                case TApp(u):
+                                    if w.f == u.f:
+                                        ty_unify_list(w.args, u.args, st)
+                                    else:
+                                        ty_mismatch(st, a2, b2)
+                                case _:
+                                    ty_mismatch(st, a2, b2)
+                        case _:
+                            ty_mismatch(st, a2, b2)
+
+def ty_unify_list(xs, ys, st):
+    match xs:
+        case []:
+            st
+        case [x, *xr]:
+            match ys:
+                case []:
+                    st
+                case [y, *yr]:
+                    ty_unify_list(xr, yr, ty_unify(x, y, st))
+
+def ty_unify_rec_one(gs, s, f):
+    match rec_field(gs, f.name):
+        case Some(t):
+            ty_unify(f.t, t, s)
+        case None:
+            s
+
+def ty_unify_rec_step(gs):
+    fn(s, f): ty_unify_rec_one(gs, s, f)
+
+def ty_unify_rec(fs, gs, st):
+    foldl(fs, st, ty_unify_rec_step(gs))
+
+def env_find(env, name):
+    match env:
+        case []:
+            None
+        case [b, *rest]:
+            if b.name == name:
+                Some(b)
+            else:
+                env_find(rest, name)
+
+def ty_subst_one(t, frm, to):
+    match t:
+        case TVar(w):
+            if w.n == frm:
+                TVar({n: to})
+            else:
+                t
+        case TName(w):
+            t
+        case TList(w):
+            TList({a: ty_subst_one(w.a, frm, to)})
+        case TMaybe(w):
+            TMaybe({a: ty_subst_one(w.a, frm, to)})
+        case TResult(w):
+            TResult({a: ty_subst_one(w.a, frm, to), e: ty_subst_one(w.e, frm, to)})
+        case TFun(w):
+            TFun({args: map(w.args, fn(x): ty_subst_one(x, frm, to)), ret: ty_subst_one(w.ret, frm, to), eff: w.eff})
+        case TApp(w):
+            TApp({f: w.f, args: map(w.args, fn(x): ty_subst_one(x, frm, to))})
+        case TRec(w):
+            TRec({fs: map(w.fs, fn(f): {name: f.name, t: ty_subst_one(f.t, frm, to)}), open: w.open})
+        case _:
+            t
+
+def inst_tc(frm, to):
+    fn(c):
+        if c.var == frm:
+            {tr: c.tr, var: to}
+        else:
+            c
+
+def ty_inst_one(acc, v):
+    f = ty_fresh(acc.st)
+    nid = f.st.n - 1
+    {t: ty_subst_one(acc.t, v, nid), st: f.st, tcs: map(acc.tcs, inst_tc(v, nid))}
+
+def ty_inst_vars(t, vars, st, tcs):
+    foldl(vars, {t: t, st: st, tcs: tcs}, ty_inst_one)
+
+def bind_tcs_of(b):
+    b.tcs
+
+def env_lookup(st, name):
+    match env_find(st.env, name):
+        case None:
+            None
+        case Some(b):
+            if b.gen:
+                r = ty_inst_vars(b.t, b.vars, st, bind_tcs_of(b))
+                Some({t: r.t, st: r.st, tcs: r.tcs})
+            else:
+                Some({t: b.t, st: st, tcs: bind_tcs_of(b)})
+
+def env_bind_cs(st, name, t, gen, vars, tcs):
+    st_env(st, [{name: name, gen: gen, vars: vars, t: t, tcs: tcs}, *st.env])
+
+def env_bind(st, name, t, gen, vars):
+    env_bind_cs(st, name, t, gen, vars, [])
+
+def ty_free(t, subst, acc):
+    t2 = ty_walk(t, subst, 64)
+    match t2:
+        case TVar(w):
+            if any(acc, fn(x): x == w.n):
+                acc
+            else:
+                [*acc, w.n]
+        case TList(w):
+            ty_free(w.a, subst, acc)
+        case TMaybe(w):
+            ty_free(w.a, subst, acc)
+        case TResult(w):
+            ty_free(w.e, subst, ty_free(w.a, subst, acc))
+        case TFun(w):
+            foldl(w.args, ty_free(w.ret, subst, acc), fn(a, x): ty_free(x, subst, a))
+        case TApp(w):
+            foldl(w.args, acc, fn(a, x): ty_free(x, subst, a))
+        case TRec(w):
+            foldl(w.fs, acc, fn(a, f): ty_free(f.t, subst, a))
+        case _:
+            acc
+
+def env_free_one(subst, a, b):
+    if b.gen:
+        a
+    else:
+        ty_free(b.t, subst, a)
+
+def env_free_step(subst):
+    fn(a, b): env_free_one(subst, a, b)
+
+def env_free(env, subst, acc):
+    foldl(env, acc, env_free_step(subst))
+
+def ty_generalize(st, t):
+    fvs = ty_free(t, st.subst, [])
+    bound = env_free(st.env, st.subst, [])
+    qs = foldl(fvs, [], gen_keep(bound))
+    {vars: qs, t: t}
+
+def gen_keep_one(bound, a, v):
+    if any(bound, fn(x): x == v):
+        a
+    else:
+        [*a, v]
+
+def gen_keep(bound):
+    fn(a, v): gen_keep_one(bound, a, v)
+
+def ty_is_miss(t):
+    match t:
+        case TMiss(z):
+            True
+        case _:
+            False
+
+def ty_or_fresh(t, st):
+    if ty_is_miss(t):
+        ty_fresh(st)
+    else:
+        {t: t, st: st}
+
+def need_eff_one(s, lab):
+    if any(s.eff, fn(x): x == lab):
+        s
+    else:
+        err(s.at, cat3("這裡不能用 ", lab, cat3("（函數沒有宣告 {", lab, "}）")))
+
+def need_effs(need, st):
+    foldl(need, st, need_eff_one)
+
+def add_poly(st, name, vars, t):
+    env_bind(st, name, t, True, vars)
+
+def mk_fun(args, ret, eff):
+    TFun({args: args, ret: ret, eff: eff})
+
+def tv1(st):
+    a = ty_fresh(st)
+    {a: a.t, ia: a.st.n - 1, st: a.st}
+
+def tv2(st):
+    a = tv1(st)
+    b = ty_fresh(a.st)
+    {a: a.a, b: b.t, ia: a.ia, ib: b.st.n - 1, st: b.st}
+
+def b_map(st):
+    r = tv2(st)
+    add_poly(r.st, "map", [r.ia, r.ib], mk_fun([TList({a: r.a}), mk_fun([r.a], r.b, [])], TList({a: r.b}), []))
+
+def b_filter(st):
+    r = tv1(st)
+    add_poly(r.st, "filter", [r.ia], mk_fun([TList({a: r.a}), mk_fun([r.a], TBool(0), [])], TList({a: r.a}), []))
+
+def b_foldl(st):
+    r = tv2(st)
+    add_poly(r.st, "foldl", [r.ia, r.ib], mk_fun([TList({a: r.a}), r.b, mk_fun([r.b, r.a], r.b, [])], r.b, []))
+
+def b_any(st):
+    r = tv1(st)
+    add_poly(r.st, "any", [r.ia], mk_fun([TList({a: r.a}), mk_fun([r.a], TBool(0), [])], TBool(0), []))
+
+def b_list_len(st):
+    r = tv1(st)
+    add_poly(r.st, "list_len", [r.ia], mk_fun([TList({a: r.a})], TInt(0), []))
+
+def b_join(st):
+    add_poly(st, "join", [], mk_fun([TList({a: TText(0)}), TText(0)], TText(0), []))
+
+def b_cat(st):
+    add_poly(st, "cat", [], mk_fun([TText(0), TText(0)], TText(0), []))
+
+def b_text_len(st):
+    add_poly(st, "text_len", [], mk_fun([TText(0)], TInt(0), []))
+
+def b_slice_text(st):
+    add_poly(st, "slice_text", [], mk_fun([TText(0), TInt(0), TInt(0)], TText(0), []))
+
+def b_starts_with(st):
+    add_poly(st, "starts_with", [], mk_fun([TText(0), TText(0)], TBool(0), []))
+
+def b_int_to_text(st):
+    add_poly(st, "int_to_text", [], mk_fun([TInt(0)], TText(0), []))
+
+def b_chars(st):
+    add_poly(st, "chars", [], mk_fun([TText(0)], TList({a: TText(0)}), []))
+
+def b_hex_esc(st):
+    add_poly(st, "hex_esc", [], mk_fun([TText(0)], TText(0), []))
+
+def b_die(st):
+    r = tv1(st)
+    add_poly(r.st, "die", [r.ia], mk_fun([TText(0)], r.a, []))
+
+def b_println(st):
+    r = tv1(st)
+    add_poly(r.st, "println", [r.ia], mk_fun([r.a], TUnit(0), ["IO"]))
+
+def b_argv(st):
+    add_poly(st, "argv", [], mk_fun([], TList({a: TText(0)}), ["IO"]))
+
+def b_range(st):
+    add_poly(st, "range", [], mk_fun([TInt(0)], TList({a: TInt(0)}), []))
+
+def b_chmod_x(st):
+    add_poly(st, "chmod_x", [], mk_fun([TText(0)], TUnit(0), ["IO"]))
+
+def b_cc_link(st):
+    add_poly(st, "cc_link", [], mk_fun([TText(0), TText(0)], TInt(0), ["IO"]))
+
+def b_cap_start(st):
+    add_poly(st, "cap_start", [], mk_fun([], TUnit(0), ["IO"]))
+
+def b_cap_take(st):
+    add_poly(st, "cap_take", [], mk_fun([], TText(0), ["IO"]))
+
+def b_set_diag(st):
+    add_poly(st, "set_diag", [], mk_fun([], TUnit(0), ["IO"]))
+
+def peano_z():
+    TName({s: "Z"})
+
+def peano_s(n):
+    TApp({f: "S", args: [n]})
+
+def peano_step(acc, i):
+    peano_s(acc)
+
+def peano_of(n):
+    foldl(range(n), peano_z(), peano_step)
+
+def is_spread(x):
+    match x:
+        case NSpread(u):
+            True
+        case _:
+            False
+
+def b_vect(st):
+    r = tv2(st)
+    add_poly(r.st, "vect", [r.ia, r.ib], mk_fun([TList({a: r.a})], TApp({f: "Vect", args: [r.b, r.a]}), []))
+
+def b_vect_len(st):
+    r = tv2(st)
+    add_poly(r.st, "vect_len", [r.ia, r.ib], mk_fun([TApp({f: "Vect", args: [r.b, r.a]})], TInt(0), []))
+
+def b_vect_xs(st):
+    r = tv2(st)
+    add_poly(r.st, "vect_xs", [r.ia, r.ib], mk_fun([TApp({f: "Vect", args: [r.b, r.a]})], TList({a: r.a}), []))
+
+def b_vect_cons(st):
+    r = tv2(st)
+    vn = TApp({f: "Vect", args: [r.b, r.a]})
+    vs = TApp({f: "Vect", args: [peano_s(r.b), r.a]})
+    add_poly(r.st, "vect_cons", [r.ia, r.ib], mk_fun([r.a, vn], vs, []))
+
+def b_vect_head(st):
+    r = tv2(st)
+    vh = TApp({f: "Vect", args: [peano_s(r.b), r.a]})
+    add_poly(r.st, "vect_head", [r.ia, r.ib], mk_fun([vh], r.a, []))
+
+def infer_vect(args, st):
+    if list_len(args) != 1:
+        err(st.at, "參數個數不對")
+        {t: TNever(0), st: st}
+    else:
+        e = nth(args, 0)
+        match e:
+            case NList(xs):
+                if any(xs, is_spread):
+                    err(st.at, "vect 只要列表字面")
+                    {t: TNever(0), st: st}
+                else:
+                    r = infer_expr(e, st)
+                    el = ty_fresh(r.st)
+                    st2 = ty_unify(r.t, TList({a: el.t}), el.st)
+                    {t: TApp({f: "Vect", args: [peano_of(list_len(xs)), ty_walks(el.t, st2)]}), st: st2}
+            case _:
+                err(st.at, "vect 只要列表字面")
+                {t: TNever(0), st: st}
+
+def b_fake_io(st):
+    add_poly(st, "fake_io", [], mk_fun([TText(0), TText(0)], TUnit(0), []))
+
+def b_write_out(st):
+    add_poly(st, "write_out", [], mk_fun([TText(0)], TUnit(0), ["IO"]))
+
+def b_shell_run(st):
+    add_poly(st, "shell_run", [], mk_fun([TText(0)], TInt(0), ["IO"]))
+
+def b_read_line(st):
+    add_poly(st, "read_line", [], mk_fun([], TMaybe({a: TText(0)}), ["IO"]))
+
+def b_catch_die(st):
+    r = tv1(st)
+    add_poly(r.st, "catch_die", [r.ia], mk_fun([mk_fun([], r.a, ["IO"])], TResult({a: r.a, e: TText(0)}), ["IO"]))
+
+def b_eprint(st):
+    add_poly(st, "eprint", [], mk_fun([TText(0)], TUnit(0), ["IO"]))
+
+def b_exit(st):
+    add_poly(st, "exit", [], mk_fun([TInt(0)], TUnit(0), ["IO"]))
+
+def b_gc(st):
+    add_poly(st, "gc", [], mk_fun([], TInt(0), []))
+
+def add_builtins(st):
+    s = b_map(st)
+    s = b_filter(s)
+    s = b_foldl(s)
+    s = b_any(s)
+    s = b_list_len(s)
+    s = b_join(s)
+    s = b_cat(s)
+    s = b_text_len(s)
+    s = b_slice_text(s)
+    s = b_starts_with(s)
+    s = b_int_to_text(s)
+    s = b_chars(s)
+    s = b_hex_esc(s)
+    s = b_die(s)
+    s = b_println(s)
+    s = b_argv(s)
+    s = b_range(s)
+    s = b_chmod_x(s)
+    s = b_cc_link(s)
+    s = b_cap_start(s)
+    s = b_cap_take(s)
+    s = b_set_diag(s)
+    s = b_vect(s)
+    s = b_vect_len(s)
+    s = b_vect_xs(s)
+    s = b_vect_cons(s)
+    s = b_vect_head(s)
+    s = b_fake_io(s)
+    s = b_write_out(s)
+    s = b_shell_run(s)
+    s = b_read_line(s)
+    s = b_catch_die(s)
+    s = b_eprint(s)
+    s = b_exit(s)
+    b_gc(s)
+
+def ctor_find(ctors, name):
+    match ctors:
+        case []:
+            None
+        case [c, *rest]:
+            if c.name == name:
+                Some(c)
+            else:
+                ctor_find(rest, name)
+
+def add_ctor(ctors, name, adt, args):
+    [{name: name, adt: adt, args: args}, *ctors]
+
+def add_dtype(st, s):
+    match s:
+        case DType(w):
+            cs = foldl(w.ctors, st.ctors, fn(a, c): add_ctor(a, c.name, w.name, c.args))
+            st_adts(st, [w, *st.adts], cs)
+        case _:
+            st
+
+def collect_adts(ss, st):
+    st1 = foldl(ss, st, add_dtype)
+    cs = add_ctor(add_ctor(add_ctor(add_ctor(st1.ctors, "Some", "Maybe", [TName({s: "A"})]), "None", "Maybe", []), "Ok", "Result", [TName({s: "A"})]), "Err", "Result", [TName({s: "E"})])
+    st_adts(st1, st1.adts, cs)
+
+def trait_k_of(w):
+    w.k
+
+def add_trait_only(st, s):
+    match s:
+        case DTrait(w):
+            st_traits(st, [{name: w.name, k: trait_k_of(w)}, *st.traits])
+        case _:
+            st
+
+def ctor_arity(st, name):
+    if name == "List" or name == "Maybe" or name == "Stream":
+        1
+    elif name == "Result" or name == "Vect":
+        2
+    elif name == "Int" or name == "Bool" or name == "Text":
+        0
+    else:
+        match adt_find(st.adts, name):
+            case Some(a):
+                list_len(a.params)
+            case None:
+                0
+
+def trait_find(xs, name):
+    match xs:
+        case []:
+            None
+        case [t, *rest]:
+            if t.name == name:
+                Some(t)
+            else:
+                trait_find(rest, name)
+
+def trait_want_k(st, name):
+    match trait_find(st.traits, name):
+        case Some(t):
+            t.k
+        case None:
+            0
+
+def impl_applied_of(w):
+    w.applied
+
+def impl_got_k(st, w):
+    if impl_applied_of(w):
+        0
+    else:
+        ctor_arity(st, w.ty)
+
+def check_impl_kind(st, w):
+    want = trait_want_k(st, w.tr)
+    got = impl_got_k(st, w)
+    if want == 1 and got != 1:
+        if impl_applied_of(w):
+            err(st.at, cat(w.ty, " 已填類型參數，不是 F[_]"))
+        else:
+            err(st.at, cat(w.ty, " 不是 F[_]"))
+    elif want == 0 and got != 0:
+        err(st.at, cat(w.ty, " 不是類型"))
+    else:
+        st
+
+def add_impl_only(st, s):
+    match s:
+        case DImpl(w):
+            if impl_has(st, w.tr, w.ty):
+                err(st.at, cat3(w.ty, " 已有 ", w.tr))
+            else:
+                st1 = check_impl_kind(st, w)
+                st_impls(st1, [{tr: w.tr, ty: w.ty}, *st1.impls])
+        case _:
+            st
+
+def collect_traits(ss, st):
+    st1 = foldl(ss, st, add_trait_only)
+    foldl(ss, st1, add_impl_only)
+
+def impl_has(st, tr, ty):
+    ty != "" and any(st.impls, fn(m): m.tr == tr and m.ty == ty)
+
+def trait_known(st, s):
+    any(st.traits, fn(t): t.name == s) or any(st.impls, fn(m): m.tr == s)
+
+def ty_ctor_name(t, st):
+    t2 = ty_expand(t, st)
+    match t2:
+        case TInt(z):
+            "Int"
+        case TBool(z):
+            "Bool"
+        case TText(z):
+            "Text"
+        case TUnit(z):
+            "()"
+        case TList(w):
+            "List"
+        case TMaybe(w):
+            "Maybe"
+        case TResult(w):
+            "Result"
+        case TApp(w):
+            w.f
+        case TName(w):
+            w.s
+        case _:
+            ""
+
+def eq_has(st, t):
+    t2 = ty_expand(t, st)
+    match t2:
+        case TInt(z):
+            True
+        case TBool(z):
+            True
+        case TText(z):
+            True
+        case TUnit(z):
+            True
+        case TList(w):
+            eq_has(st, w.a)
+        case TMaybe(w):
+            eq_has(st, w.a)
+        case TResult(w):
+            eq_has(st, w.a) and eq_has(st, w.e)
+        case TRec(w):
+            not any(w.fs, fn(f): not eq_has(st, f.t))
+        case TVar(w):
+            True
+        case _:
+            impl_has(st, "Eq", ty_ctor_name(t2, st))
+
+def has_trait(st, tr, t):
+    t2 = ty_expand(t, st)
+    match t2:
+        case TVar(w):
+            True
+        case _:
+            if tr == "Eq":
+                eq_has(st, t2)
+            else:
+                impl_has(st, tr, ty_ctor_name(t2, st))
+
+def prove_tc(st, c):
+    t = ty_apply(TVar({n: c.var}), st.subst)
+    if has_trait(st, c.tr, t):
+        st
+    else:
+        err(st.at, cat3(ty_show(ty_walks(t, st)), " 沒有 ", c.tr))
+
+def prove_tcs(tcs, st):
+    foldl(tcs, st, prove_tc)
+
+def lookup_tcs(u):
+    u.tcs
+
+def def_eff_of(w):
+    if w.name == "main" and list_len(w.eff) == 0:
+        ["IO"]
+    else:
+        w.eff
+
+def header_acc(acc, p):
+    u = ty_or_fresh(p, acc.st)
+    {ts: [*acc.ts, u.t], st: u.st}
+
+def ty_is_param_name(s):
+    text_len(s) == 1
+
+def ty_param_names(t, acc):
+    match t:
+        case TName(w):
+            if ty_is_param_name(w.s) and not any(acc, fn(x): x == w.s):
+                [*acc, w.s]
+            else:
+                acc
+        case TList(w):
+            ty_param_names(w.a, acc)
+        case TMaybe(w):
+            ty_param_names(w.a, acc)
+        case TResult(w):
+            ty_param_names(w.e, ty_param_names(w.a, acc))
+        case TFun(w):
+            foldl(w.args, ty_param_names(w.ret, acc), ty_param_names_acc)
+        case TApp(w):
+            foldl(w.args, acc, ty_param_names_acc)
+        case TRec(w):
+            foldl(w.fs, acc, ty_param_names_field)
+        case _:
+            acc
+
+def ty_param_names_acc(acc, t):
+    ty_param_names(t, acc)
+
+def ty_param_names_field(acc, f):
+    ty_param_names(f.t, acc)
+
+def ty_map_get(xs, k):
+    match xs:
+        case []:
+            None
+        case [b, *rest]:
+            if b.k == k:
+                Some(b.v)
+            else:
+                ty_map_get(rest, k)
+
+def ty_replace_names(t, mp):
+    match t:
+        case TName(w):
+            match ty_map_get(mp, w.s):
+                case Some(u):
+                    u
+                case None:
+                    t
+        case TList(w):
+            TList({a: ty_replace_names(w.a, mp)})
+        case TMaybe(w):
+            TMaybe({a: ty_replace_names(w.a, mp)})
+        case TResult(w):
+            TResult({a: ty_replace_names(w.a, mp), e: ty_replace_names(w.e, mp)})
+        case TFun(w):
+            TFun({args: map(w.args, fn(x): ty_replace_names(x, mp)), ret: ty_replace_names(w.ret, mp), eff: w.eff})
+        case TApp(w):
+            TApp({f: w.f, args: map(w.args, fn(x): ty_replace_names(x, mp))})
+        case TRec(w):
+            TRec({fs: map(w.fs, fn(f): {name: f.name, t: ty_replace_names(f.t, mp)}), open: w.open})
+        case _:
+            t
+
+def bind_tparams(t, st):
+    ns = ty_param_names(t, [])
+    r = foldl(ns, {mp: [], st: st}, bind_tparam_one)
+    {t: ty_replace_names(t, r.mp), st: r.st, mp: r.mp}
+
+def bind_tparam_one(acc, s):
+    f = ty_fresh(acc.st)
+    {mp: [{k: s, v: f.t}, *acc.mp], st: f.st}
+
+def ddef_tcs(w):
+    w.tcs
+
+def tcs_resolve_one(mp):
+    fn(acc, c):
+        if c.tr == "":
+            acc
+        else:
+            match ty_map_get(mp, c.name):
+                case Some(u):
+                    match u:
+                        case TVar(w):
+                            [*acc, {tr: c.tr, var: w.n}]
+                        case _:
+                            acc
+                case None:
+                    acc
+
+def tcs_resolve(tcs, mp):
+    foldl(tcs, [], tcs_resolve_one(mp))
+
+def header_fun(w, st):
+    r0 = foldl(w.pts, {ts: [], st: st}, header_acc)
+    u = ty_or_fresh(w.ret, r0.st)
+    raw = mk_fun(r0.ts, u.t, def_eff_of(w))
+    r = bind_tparams(raw, u.st)
+    {t: r.t, st: r.st, tcs: tcs_resolve(ddef_tcs(w), r.mp)}
+
+def add_annotated_def(st, s):
+    match s:
+        case DDef(w):
+            if any(w.pts, fn(p): not ty_is_miss(p)) or not ty_is_miss(w.ret):
+                h = header_fun(w, st)
+                g = ty_generalize(h.st, h.t)
+                env_bind_cs(h.st, w.name, g.t, True, g.vars, h.tcs)
+            else:
+                st
+        case _:
+            st
+
+def add_def_headers(ss, st):
+    foldl(ss, st, add_annotated_def)
+
+def arg_acc(acc, a):
+    {ts: [*acc.ts, a], st: acc.st}
+
+def apply_fun(ft, args, st):
+    ft2 = ty_expand(ft, st)
+    match ft2:
+        case TNever(z):
+            {t: TNever(0), st: st}
+        case TVar(w):
+            r = foldl(args, {ts: [], st: st}, arg_acc)
+            u = ty_fresh(r.st)
+            funty = mk_fun(r.ts, u.t, [])
+            {t: u.t, st: ty_unify(ft2, funty, u.st)}
+        case TFun(u):
+            if list_len(u.args) != list_len(args):
+                err(st.at, "參數個數不對")
+            else:
+                st2 = ty_unify_list(args, u.args, st)
+                st3 = need_effs(u.eff, st2)
+                {t: u.ret, st: st3}
+        case _:
+            u = ty_fresh(st)
+            {t: u.t, st: u.st}
+
+def infer_arg_one(acc, e):
+    r = infer_expr(e, acc.st)
+    {ts: [*acc.ts, r.t], st: r.st}
+
+def infer_args(es, st):
+    foldl(es, {ts: [], st: st}, infer_arg_one)
+
+def ffi_lit(e):
+    match e:
+        case NText(s):
+            Some(s)
+        case _:
+            None
+
+def ffi_sig(lib, sym):
+    if lib == "c" and (sym == "abs" or sym == "labs"):
+        Some({arg: TInt(0), ret: TInt(0)})
+    else:
+        None
+
+def infer_ffi_known(lib, sym, ia, st):
+    match ffi_sig(lib, sym):
+        case None:
+            err(st.at, cat3("沒有 ffi ", lib, cat(".", sym)))
+            {t: TNever(0), st: st}
+        case Some(sig):
+            if list_len(ia.ts) != 3:
+                err(st.at, "參數個數不對")
+                {t: TNever(0), st: st}
+            else:
+                st0 = ty_unify(nth(ia.ts, 0), TText(0), ia.st)
+                st1 = ty_unify(nth(ia.ts, 1), TText(0), st0)
+                st2 = ty_unify(nth(ia.ts, 2), sig.arg, st1)
+                {t: sig.ret, st: st2}
+
+def infer_ffi_call(args, ia, st):
+    if list_len(args) != 3:
+        err(st.at, "參數個數不對")
+        {t: TNever(0), st: st}
+    else:
+        match ffi_lit(nth(args, 0)):
+            case None:
+                err(st.at, "ffi 只要字面庫名")
+                {t: TNever(0), st: st}
+            case Some(lib):
+                match ffi_lit(nth(args, 1)):
+                    case None:
+                        err(st.at, "ffi 只要字面名字")
+                        {t: TNever(0), st: st}
+                    case Some(sym):
+                        infer_ffi_known(lib, sym, ia, st)
+
+def infer_mod_call(mod, name, args, st, w):
+    st1 = st_at(st, at_tok(w.ln, w.cl, w.fl))
+    ia = infer_args(args, st1)
+    if mod == "io":
+        if name == "read_file":
+            st2 = ty_unify_list(ia.ts, [TText(0)], need_effs(["IO"], ia.st))
+            {t: TText(0), st: st2}
+        elif name == "write_file":
+            st2 = ty_unify_list(ia.ts, [TText(0), TText(0)], need_effs(["IO"], ia.st))
+            {t: TUnit(0), st: st2}
+        elif name == "println":
+            st2 = need_effs(["IO"], ia.st)
+            {t: TUnit(0), st: st2}
+        elif name == "open":
+            st2 = ty_unify_list(ia.ts, [TText(0)], need_effs(["IO"], ia.st))
+            {t: TName({s: "File"}), st: st2}
+        else:
+            u = ty_fresh(ia.st)
+            {t: u.t, st: u.st}
+    elif mod == "State":
+        if name == "get":
+            u = ty_fresh(need_effs(["State"], ia.st))
+            {t: u.t, st: u.st}
+        elif name == "put":
+            st2 = need_effs(["State"], ia.st)
+            {t: TUnit(0), st: st2}
+        else:
+            u = ty_fresh(ia.st)
+            {t: u.t, st: u.st}
+    elif mod == "Except":
+        if name == "throw":
+            {t: TNever(0), st: need_effs(["Except"], ia.st)}
+        else:
+            u = ty_fresh(ia.st)
+            {t: u.t, st: u.st}
+    elif mod == "Stream":
+        if name == "iterate":
+            el = ty_fresh(ia.st)
+            st2 = if list_len(ia.ts) >= 1:
+                ty_unify(nth(ia.ts, 0), el.t, el.st)
+            else:
+                el.st
+            {t: TApp({f: "Stream", args: [el.t]}), st: st2}
+        elif name == "take":
+            el = ty_fresh(ia.st)
+            {t: TList({a: el.t}), st: el.st}
+        elif name == "map":
+            el = ty_fresh(ia.st)
+            {t: TApp({f: "Stream", args: [el.t]}), st: el.st}
+        else:
+            u = ty_fresh(ia.st)
+            {t: u.t, st: u.st}
+    elif mod == "conc":
+        u = ty_fresh(ia.st)
+        {t: u.t, st: u.st}
+    elif mod == "prim":
+        if name == "ffi_call":
+            infer_ffi_call(args, ia, st1)
+        else:
+            u = ty_fresh(ia.st)
+            {t: u.t, st: u.st}
+    else:
+        r = infer_expr(NField({obj: NVar(mod), name: name}), ia.st)
+        apply_fun(r.t, ia.ts, r.st)
+
+def ctor_adt_ty(c, st):
+    if c.adt == "Maybe":
+        a = ty_fresh(st)
+        ps = if list_len(c.args) == 0:
+            []
+        else:
+            [a.t]
+        {t: TMaybe({a: a.t}), payload: ps, st: a.st}
+    elif c.adt == "Result":
+        a = ty_fresh(st)
+        b = ty_fresh(a.st)
+        if c.name == "Ok":
+            {t: TResult({a: a.t, e: b.t}), payload: [a.t], st: b.st}
+        else:
+            {t: TResult({a: a.t, e: b.t}), payload: [b.t], st: b.st}
+    else:
+        {t: TName({s: c.adt}), payload: c.args, st: st}
+
+def infer_pat(p, sty, st):
+    match p:
+        case QWild(z):
+            st
+        case QVar(s):
+            env_bind(st, s, sty, False, [])
+        case QInt(n):
+            ty_unify(sty, TInt(0), st)
+        case QText(s):
+            ty_unify(sty, TText(0), st)
+        case QCtor(w):
+            match ctor_find(st.ctors, w.name):
+                case Some(c):
+                    u = ctor_adt_ty(c, st)
+                    st2 = ty_unify(sty, u.t, u.st)
+                    if w.has:
+                        pt = if list_len(u.payload) == 0:
+                            ty_fresh(st2).t
+                        else:
+                            nth(u.payload, 0)
+                        infer_pat(w.arg, pt, st2)
+                    else:
+                        st2
+                case None:
+                    if w.has:
+                        u = ty_fresh(st)
+                        infer_pat(w.arg, u.t, u.st)
+                    else:
+                        st
+        case QList(w):
+            a = ty_fresh(st)
+            st2 = ty_unify(sty, TList({a: a.t}), a.st)
+            st3 = foldl(w.items, st2, fn(s, q): infer_pat(q, a.t, s))
+            if w.has:
+                env_bind(st3, w.rest, TList({a: a.t}), False, [])
+            else:
+                st3
+        case _:
+            st
+
+def case_ctor_one(acc, c):
+    match c:
+        case KCase(w):
+            match w.pat:
+                case QCtor(p):
+                    [*acc, p.name]
+                case QWild(z):
+                    [*acc, "_"]
+                case _:
+                    acc
+        case _:
+            acc
+
+def case_ctors(cs):
+    foldl(cs, [], case_ctor_one)
+
+def adt_ctor_names(st, sty):
+    t = ty_expand(sty, st)
+    match t:
+        case TMaybe(z):
+            ["Some", "None"]
+        case TResult(z):
+            ["Ok", "Err"]
+        case TName(w):
+            match adt_find(st.adts, w.s):
+                case Some(a):
+                    if a.kind == "adt":
+                        map(a.ctors, fn(c): c.name)
+                    else:
+                        []
+                case None:
+                    []
+        case TApp(w):
+            match adt_find(st.adts, w.f):
+                case Some(a):
+                    if a.kind == "adt":
+                        map(a.ctors, fn(c): c.name)
+                    else:
+                        []
+                case None:
+                    []
+        case _:
+            []
+
+def check_exh(st, sty, names):
+    if any(names, fn(x): x == "_"):
+        st
+    else:
+        want = adt_ctor_names(st, sty)
+        miss = foldl(want, [], gen_keep(names))
+        if list_len(miss) == 0:
+            if any(names, fn(x): x == "Some") and not any(names, fn(x): x == "None"):
+                err(st.at, "match 沒有涵蓋 None")
+            elif any(names, fn(x): x == "None") and not any(names, fn(x): x == "Some"):
+                err(st.at, "match 沒有涵蓋 Some")
+            elif any(names, fn(x): x == "Ok") and not any(names, fn(x): x == "Err"):
+                err(st.at, "match 沒有涵蓋 Err")
+            elif any(names, fn(x): x == "Err") and not any(names, fn(x): x == "Ok"):
+                err(st.at, "match 沒有涵蓋 Ok")
+            else:
+                st
+        else:
+            err(st.at, cat("match 沒有涵蓋 ", nth(miss, 0)))
+
+def infer_list_item(el, s, x):
+    match x:
+        case NSpread(u):
+            r = infer_expr(u, s)
+            ty_unify(r.t, TList({a: el}), r.st)
+        case _:
+            r = infer_expr(x, s)
+            ty_unify(r.t, el, r.st)
+
+def infer_list_step(el):
+    fn(s, x): infer_list_item(el, s, x)
+
+def infer_rec_field(acc, kv):
+    match kv:
+        case NKV(u):
+            r = infer_expr(u.e, acc.st)
+            {fs: [*acc.fs, {name: u.name, t: r.t}], st: r.st}
+        case _:
+            acc
+
+def infer_fstr_part(s, p):
+    match p:
+        case FExp(x):
+            infer_expr(x, s).st
+        case _:
+            s
+
+def handler_name(a, kv):
+    match kv:
+        case NKV(u):
+            [*a, u.name]
+        case _:
+            a
+
+def infer_patch(s, kv):
+    match kv:
+        case NKV(u):
+            infer_expr(u.e, s).st
+        case _:
+            s
+
+def infer_case_one(sty, rt, s, c):
+    match c:
+        case KCase(u):
+            s1 = infer_pat(u.pat, sty, s)
+            b = infer_stmts(u.body, s1)
+            ty_unify(rt, b.t, b.st)
+        case _:
+            s
+
+def infer_case_step(sty, rt):
+    fn(s, c): infer_case_one(sty, rt, s, c)
+
+def bind_param_one(ps, ts, s, i):
+    env_bind(s, nth(ps, i), nth(ts, i), False, [])
+
+def bind_param(ps, ts):
+    fn(s, i): bind_param_one(ps, ts, s, i)
+
+def bind_fun_param_one(ps, args, s, i):
+    pt = if i < list_len(args):
+        nth(args, i)
+    else:
+        TMiss(0)
+    u = ty_or_fresh(pt, s)
+    env_bind(u.st, nth(ps, i), u.t, False, [])
+
+def bind_fun_param(ps, args):
+    fn(s, i): bind_fun_param_one(ps, args, s, i)
+
+def infer_top_one(s, stmt):
+    match stmt:
+        case DDef(w):
+            infer_def(w, s)
+        case DLet(w):
+            infer_stmt(stmt, s).st
+        case DExp(e):
+            infer_expr(e, s).st
+        case _:
+            s
+
+def infer_field(objt, name, st):
+    t = ty_expand(objt, st)
+    match t:
+        case TRec(w):
+            match rec_field(w.fs, name):
+                case Some(ft):
+                    {t: ft, st: st}
+                case None:
+                    if w.open:
+                        u = ty_fresh(st)
+                        {t: u.t, st: u.st}
+                    else:
+                        err(st.at, cat("沒有欄位 ", name))
+        case _:
+            u = ty_fresh(st)
+            {t: u.t, st: u.st}
+
+def infer_expr(e, st):
+    match e:
+        case NInt(x):
+            {t: TInt(0), st: st}
+        case NText(s):
+            {t: TText(0), st: st}
+        case NBool(b):
+            {t: TBool(0), st: st}
+        case NUnit(z):
+            {t: TUnit(0), st: st}
+        case NVar(s):
+            if s == "None":
+                a = ty_fresh(st)
+                {t: TMaybe({a: a.t}), st: a.st}
+            elif s == "True" or s == "False":
+                {t: TBool(0), st: st}
+            else:
+                match env_lookup(st, s):
+                    case Some(u):
+                        u
+                    case None:
+                        match ctor_find(st.ctors, s):
+                            case Some(c):
+                                u = ctor_adt_ty(c, st)
+                                if list_len(u.payload) == 0:
+                                    {t: u.t, st: u.st}
+                                else:
+                                    {t: mk_fun(u.payload, u.t, []), st: u.st}
+                            case None:
+                                u = ty_fresh(st)
+                                {t: u.t, st: u.st}
+        case NCall(w):
+            infer_call(w, st)
+        case NField(w):
+            o = infer_expr(w.obj, st)
+            infer_field(o.t, w.name, o.st)
+        case NBin(w):
+            infer_bin(w, st)
+        case NUn(w):
+            r = infer_expr(w.e, st)
+            if w.op == "not":
+                {t: TBool(0), st: ty_unify(r.t, TBool(0), r.st)}
+            else:
+                {t: TInt(0), st: ty_unify(r.t, TInt(0), r.st)}
+        case NList(xs):
+            a = ty_fresh(st)
+            st2 = foldl(xs, a.st, infer_list_step(a.t))
+            {t: TList({a: a.t}), st: st2}
+        case NIf(w):
+            c = infer_expr(w.cond, st)
+            st2 = ty_unify(c.t, TBool(0), c.st)
+            th = infer_stmts(w.then, st2)
+            if w.has:
+                el = infer_stmts(w.else_, th.st)
+                {t: th.t, st: ty_unify(th.t, el.t, el.st)}
+            else:
+                th
+        case NMatch(w):
+            infer_match(w, st)
+        case NFn(w):
+            infer_fn(w, st)
+        case NBlk(ss):
+            infer_stmts(ss, st)
+        case NRec(w):
+            fs = foldl(w.fields, {fs: [], st: st}, infer_rec_field)
+            if w.has:
+                o = infer_expr(w.sp, fs.st)
+                ot = ty_expand(o.t, o.st)
+                match ot:
+                    case TRec(r):
+                        {t: TRec({fs: rec_merge(r.fs, fs.fs), open: True}), st: o.st}
+                    case _:
+                        {t: TRec({fs: fs.fs, open: True}), st: o.st}
+            else:
+                {t: TRec({fs: fs.fs, open: True}), st: fs.st}
+        case NIdx(w):
+            o = infer_expr(w.obj, st)
+            i = infer_expr(w.i, o.st)
+            st2 = ty_unify(i.t, TInt(0), i.st)
+            a = ty_fresh(st2)
+            st3 = ty_unify(o.t, TList({a: a.t}), a.st)
+            if w.has:
+                e2 = infer_expr(w.end, st3)
+                st4 = ty_unify(e2.t, TInt(0), e2.st)
+                {t: TList({a: a.t}), st: st4}
+            else:
+                {t: TMaybe({a: a.t}), st: st3}
+        case NFstr(ps):
+            st2 = foldl(ps, st, infer_fstr_part)
+            {t: TText(0), st: st2}
+        case NHandle(w):
+            extra = foldl(w.hs, [], handler_name)
+            inner = infer_expr(w.e, st_eff(st, [*st.eff, *extra]))
+            st2 = st_eff(inner.st, st.eff)
+            if any(extra, fn(x): x == "Except"):
+                ev = ty_fresh(st2)
+                {t: TResult({a: inner.t, e: ev.t}), st: ev.st}
+            else:
+                {t: inner.t, st: st2}
+        case NWith(w):
+            s0 = infer_expr(w.setup, st)
+            st1 = env_bind(s0.st, w.var, TName({s: "File"}), False, [])
+            infer_stmts(w.body, st1)
+        case NUpd(w):
+            o = infer_expr(w.obj, st)
+            st2 = foldl(w.patches, o.st, infer_patch)
+            {t: o.t, st: st2}
+        case NHole(z):
+            ty_fresh(st)
+        case _:
+            {t: TUnit(0), st: st}
+
+def infer_named_call(s, args, st):
+    if s == "vect":
+        infer_vect(args, st)
+    else:
+        infer_named_call_poly(s, args, st)
+
+def infer_named_call_poly(s, args, st):
+    ia = infer_args(args, st)
+    match env_lookup(ia.st, s):
+        case Some(u):
+            r = apply_fun(u.t, ia.ts, u.st)
+            {t: r.t, st: prove_tcs(lookup_tcs(u), r.st)}
+        case None:
+            funty = infer_expr(NVar(s), ia.st)
+            apply_fun(funty.t, ia.ts, funty.st)
+
+def infer_trait_call(tr, meth, args, st):
+    ia = infer_args(args, st)
+    if list_len(ia.ts) == 0:
+        err(st.at, "參數個數不對")
+    else:
+        fa = nth(ia.ts, 0)
+        ctor = ty_ctor_name(fa, ia.st)
+        if impl_has(ia.st, tr, ctor):
+            nm = impl_fun_name(tr, ctor, meth)
+            match env_lookup(ia.st, nm):
+                case Some(u):
+                    r = apply_fun(u.t, ia.ts, u.st)
+                    {t: r.t, st: r.st}
+                case None:
+                    err(st.at, cat3(ty_show(ty_walks(fa, ia.st)), " 沒有 ", tr))
+        else:
+            err(st.at, cat3(ty_show(ty_walks(fa, ia.st)), " 沒有 ", tr))
+
+def infer_call(w, st):
+    st0 = st_at(st, at_tok(w.ln, w.cl, w.fl))
+    match w.fun:
+        case NVar(s):
+            infer_named_call(s, w.args, st0)
+        case NField(f):
+            match f.obj:
+                case NVar(s):
+                    if s == "io" or s == "State" or s == "Except" or s == "Stream" or s == "conc" or s == "prim":
+                        infer_mod_call(s, f.name, w.args, st0, w)
+                    elif trait_known(st0, s):
+                        infer_trait_call(s, f.name, w.args, st0)
+                    else:
+                        ia = infer_args(w.args, st0)
+                        funty = infer_expr(w.fun, ia.st)
+                        apply_fun(funty.t, ia.ts, funty.st)
+                case _:
+                    ia = infer_args(w.args, st0)
+                    funty = infer_expr(w.fun, ia.st)
+                    apply_fun(funty.t, ia.ts, funty.st)
+        case _:
+            ia = infer_args(w.args, st0)
+            funty = infer_expr(w.fun, ia.st)
+            apply_fun(funty.t, ia.ts, funty.st)
+
+def infer_bin(w, st):
+    l = infer_expr(w.l, st)
+    r = infer_expr(w.r, l.st)
+    if w.op == "+" or w.op == "-" or w.op == "*" or w.op == "/":
+        st2 = ty_unify(l.t, TInt(0), r.st)
+        st3 = ty_unify(r.t, TInt(0), st2)
+        {t: TInt(0), st: st3}
+    elif w.op == "==" or w.op == "!=":
+        st2 = ty_unify(l.t, r.t, r.st)
+        {t: TBool(0), st: st2}
+    elif w.op == "<" or w.op == ">" or w.op == "<=" or w.op == ">=":
+        st2 = ty_unify(l.t, TInt(0), r.st)
+        st3 = ty_unify(r.t, TInt(0), st2)
+        {t: TBool(0), st: st3}
+    else:
+        st2 = ty_unify(l.t, TBool(0), r.st)
+        st3 = ty_unify(r.t, TBool(0), st2)
+        {t: TBool(0), st: st3}
+
+def infer_match(w, st):
+    st0 = st_at(st, at_tok(w.ln, w.cl, w.fl))
+    e = infer_expr(w.e, st0)
+    names = case_ctors(w.cases)
+    st1 = check_exh(e.st, e.t, names)
+    rt = ty_fresh(st1)
+    st2 = foldl(w.cases, rt.st, infer_case_step(e.t, rt.t))
+    {t: rt.t, st: st2}
+
+def infer_fn(w, st):
+    r0 = foldl(w.pts, {ts: [], st: st}, header_acc)
+    st1 = foldl(range(list_len(w.ps)), r0.st, bind_param(w.ps, r0.ts))
+    b = infer_expr(w.body, st1)
+    {t: mk_fun(r0.ts, b.t, []), st: b.st}
+
+def infer_stmts(ss, st):
+    match ss:
+        case []:
+            {t: TUnit(0), st: st}
+        case [s]:
+            infer_stmt(s, st)
+        case [s, *rest]:
+            r = infer_stmt(s, st)
+            infer_stmts(rest, r.st)
+
+def infer_stmt(s, st):
+    match s:
+        case DLet(w):
+            r = infer_expr(w.e, st)
+            st1 = if ty_is_miss(w.ty):
+                r.st
+            else:
+                ty_unify(r.t, w.ty, r.st)
+            g = ty_generalize(st1, r.t)
+            {t: r.t, st: env_bind(st1, w.name, g.t, True, g.vars)}
+        case DExp(e):
+            infer_expr(e, st)
+        case DDef(w):
+            {t: TUnit(0), st: infer_def(w, st)}
+        case DType(w):
+            {t: TUnit(0), st: st}
+        case _:
+            {t: TUnit(0), st: st}
+
+def infer_def(w, st):
+    st0 = st_at(st, at_tok(w.ln, w.cl, w.fl))
+    st1 = st_eff(st0, def_eff_of(w))
+    match env_lookup(st1, w.name):
+        case Some(u):
+            ft = ty_expand(u.t, u.st)
+            match ft:
+                case TFun(f):
+                    st2 = foldl(range(list_len(w.ps)), u.st, bind_fun_param(w.ps, f.args))
+                    st3 = env_bind(st2, w.name, ft, False, [])
+                    b = infer_stmts(w.body, st3)
+                    st4 = ty_unify(b.t, f.ret, b.st)
+                    zonk(st_env(st4, st.env))
+                case _:
+                    infer_def_infer(w, st1)
+        case None:
+            infer_def_infer(w, st1)
+
+def infer_def_infer(w, st):
+    h = header_fun(w, st)
+    st1 = match h.t:
+        case TFun(f):
+            foldl(range(list_len(w.ps)), h.st, bind_fun_param(w.ps, f.args))
+        case _:
+            h.st
+    st2 = env_bind(st1, w.name, h.t, False, [])
+    b = infer_stmts(w.body, st2)
+    st3 = match h.t:
+        case TFun(f):
+            ty_unify(b.t, f.ret, b.st)
+        case _:
+            b.st
+    g = ty_generalize(st_env(st3, st.env), ty_apply(h.t, st3.subst))
+    zonk(env_bind_cs(st_env(st3, st.env), w.name, g.t, True, g.vars, h.tcs))
+
+def infer_top(ss, st):
+    foldl(ss, st, infer_top_one)
+
+def infer_env(ss):
+    at0 = at_tok(1, 1, "")
+    st0 = st_copy(0, [], [], [], [], at0, [], [], [])
+    st1 = add_builtins(st0)
+    st2 = collect_adts(ss, st1)
+    st2b = collect_traits(ss, st2)
+    st3 = add_def_headers(ss, st2b)
+    infer_top(ss, st3)
+
+def infer_prog(ss):
+    infer_env(ss)
+    ()
+
+def has_impl_stmt(s):
+    match s:
+        case DImpl(w):
+            True
+        case _:
+            False
+
+def rs_kv(st, kv):
+    match kv:
+        case NKV(w):
+            NKV({name: w.name, e: rs_expr(w.e, st)})
+        case _:
+            kv
+
+def rs_fpart(st, p):
+    match p:
+        case FExp(e):
+            FExp(rs_expr(e, st))
+        case _:
+            p
+
+def rs_list_item(st, x):
+    match x:
+        case NSpread(u):
+            NSpread(rs_expr(u, st))
+        case _:
+            rs_expr(x, st)
+
+def rs_call(w, st):
+    args = map(w.args, fn(a): rs_expr(a, st))
+    match w.fun:
+        case NField(f):
+            match f.obj:
+                case NVar(s):
+                    if trait_known(st, s) and list_len(args) > 0:
+                        fa = infer_expr(nth(args, 0), st)
+                        ctor = ty_ctor_name(fa.t, fa.st)
+                        if impl_has(fa.st, s, ctor):
+                            NCall({fun: NVar(impl_fun_name(s, ctor, f.name)), args: args, ln: w.ln, cl: w.cl, fl: w.fl})
+                        else:
+                            NCall({fun: rs_expr(w.fun, st), args: args, ln: w.ln, cl: w.cl, fl: w.fl})
+                    else:
+                        NCall({fun: rs_expr(w.fun, st), args: args, ln: w.ln, cl: w.cl, fl: w.fl})
+                case _:
+                    NCall({fun: rs_expr(w.fun, st), args: args, ln: w.ln, cl: w.cl, fl: w.fl})
+        case _:
+            NCall({fun: rs_expr(w.fun, st), args: args, ln: w.ln, cl: w.cl, fl: w.fl})
+
+def rs_case(sty, st, c):
+    match c:
+        case KCase(u):
+            s1 = infer_pat(u.pat, sty, st)
+            KCase({pat: u.pat, body: rs_stmts_only(u.body, s1)})
+        case _:
+            c
+
+def rs_expr(e, st):
+    match e:
+        case NCall(w):
+            rs_call(w, st)
+        case NField(w):
+            NField({obj: rs_expr(w.obj, st), name: w.name})
+        case NBin(w):
+            NBin({op: w.op, l: rs_expr(w.l, st), r: rs_expr(w.r, st)})
+        case NUn(w):
+            NUn({op: w.op, e: rs_expr(w.e, st)})
+        case NList(xs):
+            NList(map(xs, fn(x): rs_list_item(st, x)))
+        case NSpread(x):
+            NSpread(rs_expr(x, st))
+        case NIdx(w):
+            if w.has:
+                NIdx({obj: rs_expr(w.obj, st), i: rs_expr(w.i, st), has: True, end: rs_expr(w.end, st)})
+            else:
+                NIdx({obj: rs_expr(w.obj, st), i: rs_expr(w.i, st), has: False, end: w.end})
+        case NRec(w):
+            NRec({fields: map(w.fields, fn(kv): rs_kv(st, kv)), has: w.has, sp: rs_expr(w.sp, st)})
+        case NUpd(w):
+            NUpd({obj: rs_expr(w.obj, st), patches: map(w.patches, fn(kv): rs_kv(st, kv))})
+        case NHandle(w):
+            NHandle({e: rs_expr(w.e, st), hs: map(w.hs, fn(kv): rs_kv(st, kv))})
+        case NWith(w):
+            NWith({setup: rs_expr(w.setup, st), var: w.var, body: rs_stmts_only(w.body, env_bind(st, w.var, TName({s: "File"}), False, []))})
+        case NIf(w):
+            NIf({cond: rs_expr(w.cond, st), then: rs_stmts_only(w.then, st), else_: rs_stmts_only(w.else_, st), has: w.has})
+        case NMatch(w):
+            e2 = rs_expr(w.e, st)
+            sty = infer_expr(e2, st)
+            NMatch({e: e2, cases: map(w.cases, fn(c): rs_case(sty.t, sty.st, c)), ln: w.ln, cl: w.cl, fl: w.fl})
+        case NFn(w):
+            r0 = foldl(w.pts, {ts: [], st: st}, header_acc)
+            st1 = foldl(range(list_len(w.ps)), r0.st, bind_param(w.ps, r0.ts))
+            NFn({ps: w.ps, pts: w.pts, body: rs_expr(w.body, st1)})
+        case NBlk(ss):
+            NBlk(rs_stmts_only(ss, st))
+        case NFstr(ps):
+            NFstr(map(ps, fn(p): rs_fpart(st, p)))
+        case _:
+            e
+
+def rs_stmt(s, st):
+    match s:
+        case DLet(w):
+            e2 = rs_expr(w.e, st)
+            r = infer_expr(e2, st)
+            {s: DLet({name: w.name, e: e2, ty: w.ty}), st: env_bind(r.st, w.name, r.t, False, [])}
+        case DExp(e):
+            {s: DExp(rs_expr(e, st)), st: st}
+        case DDef(w):
+            {s: rs_def(w, st), st: st}
+        case _:
+            {s: s, st: st}
+
+def rs_def(w, st):
+    st1 = match env_lookup(st, w.name):
+        case Some(u):
+            match ty_expand(u.t, u.st):
+                case TFun(f):
+                    foldl(range(list_len(w.ps)), st, bind_fun_param(w.ps, f.args))
+                case _:
+                    st
+        case None:
+            st
+    DDef({name: w.name, ps: w.ps, pts: w.pts, body: rs_stmts_only(w.body, st1), eff: w.eff, tot: w.tot, once_ps: w.once_ps, ret: w.ret, ln: w.ln, cl: w.cl, fl: w.fl, tcs: ddef_tcs(w)})
+
+def rs_stmts_fold(acc, s):
+    r = rs_stmt(s, acc.st)
+    {ss: [*acc.ss, r.s], st: r.st}
+
+def rs_stmts_only(ss, st):
+    foldl(ss, {ss: [], st: st}, rs_stmts_fold).ss
+
+def resolve_impls(ss):
+    if any(ss, has_impl_stmt):
+        rs_stmts_only(ss, infer_env(ss))
+    else:
+        ss
+
+def last_stmt(ss):
+    match ss:
+        case []:
+            None
+        case [s]:
+            Some(s)
+        case [s, *rest]:
+            last_stmt(rest)
+
+def typeof_prog(ss):
+    at0 = at_tok(1, 1, "")
+    st0 = st_copy(0, [], [], [], [], at0, [], [], [])
+    st1 = add_builtins(st0)
+    st2 = collect_adts(ss, st1)
+    st2b = collect_traits(ss, st2)
+    st3 = add_def_headers(ss, st2b)
+    st4 = infer_top(ss, st3)
+    match last_stmt(ss):
+        case None:
+            "()"
+        case Some(s):
+            match s:
+                case DDef(w):
+                    match env_lookup(st4, w.name):
+                        case Some(u):
+                            ty_show(ty_apply(u.t, u.st.subst))
+                        case None:
+                            "()"
+                case DLet(w):
+                    match env_lookup(st4, w.name):
+                        case Some(u):
+                            ty_show(ty_apply(u.t, u.st.subst))
+                        case None:
+                            "()"
+                case DExp(e):
+                    r = infer_expr(e, st4)
+                    ty_show(ty_apply(r.t, r.st.subst))
+                case _:
+                    "()"
+

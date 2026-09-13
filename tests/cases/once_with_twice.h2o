@@ -1,0 +1,4 @@
+def main() -> {IO} ():
+    with io.open("examples/core0_hello.h2o") as f:
+        g = f
+        h = f

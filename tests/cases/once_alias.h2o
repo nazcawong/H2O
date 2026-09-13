@@ -1,0 +1,3 @@
+def drop(f: once File) -> {IO} ():
+    g = f
+    println(f)

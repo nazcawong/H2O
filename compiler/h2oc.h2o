@@ -1,0 +1,369 @@
+# h2oc — BH 子集編譯器入口（詞法／解析／檢查／bytecode VM；可選發獨立 Python）。
+# 本檔與 compiler/*.h2o 只用 BH 寫（沒有 |>、_、f-string）。
+# 輸入語言含管線、洞、f-string、impl、update。
+
+import lex
+import parse
+import desugar
+import emit
+import emit_bc
+import emit_nat
+import check
+import ir
+import fmt
+import repl
+
+def prelude_py() -> {IO} Text:
+    cat(io.read_file("compiler/rt.py"), "\n")
+
+def last_slash(p):
+    foldl(range(text_len(p)), 0, slash_step(p))
+
+def slash_step(p):
+    fn(acc, i):
+        if slice_text(p, i, i + 1) == "/":
+            i
+        else:
+            acc
+
+def dirname(p):
+    k = last_slash(p)
+    if k == 0:
+        "."
+    else:
+        slice_text(p, 0, k)
+
+def skip_mod(m):
+    m == "io" or m == "list" or m == "State" or m == "Except" or m == "IO" or m == "Stream" or m == "conc" or m == "prim"
+
+def seen_has(seen, m):
+    any(seen, fn(x): x == m)
+
+def trim_slash(p):
+    n = text_len(p)
+    if n > 0 and slice_text(p, n - 1, n) == "/":
+        slice_text(p, 0, n - 1)
+    else:
+        p
+
+def resolve_src(path) -> {IO} Text:
+    p = trim_slash(path)
+    if ends_with(p, ".h2o"):
+        p
+    else:
+        m = cat(p, "/main.h2o")
+        s = io.read_file(m)
+        if s != "":
+            m
+        else:
+            cat(p, "/mod.h2o")
+
+def resolve_pkg(path):
+    p = trim_slash(path)
+    if ends_with(p, ".h2o"):
+        p
+    else:
+        cat(p, "/mod.h2o")
+
+def load_mod_file(dir, m) -> {IO} {path: Text, src: Text}:
+    p1 = cat(cat(dir, "/"), cat(m, ".h2o"))
+    s1 = io.read_file(p1)
+    if s1 != "":
+        {path: p1, src: s1}
+    else:
+        p2 = cat(cat(dir, "/"), cat(m, "/mod.h2o"))
+        {path: p2, src: io.read_file(p2)}
+
+def name_in(xs, n):
+    any(xs, fn(x): x == n)
+
+def hidden_acc(pubs):
+    fn(a, s):
+        n = decl_pub_name(s)
+        if n == "" or name_in(pubs, n):
+            a
+        else:
+            [*a, n]
+
+def hidden_of(pr):
+    if list_len(pr.pubs) == 0:
+        []
+    else:
+        foldl(pr.v, [], hidden_acc(pr.pubs))
+
+def load_imps(dir, imps, seen) -> {IO} {stmts: List, seen: List, hidden: List}:
+    match imps:
+        case []:
+            {stmts: [], seen: seen, hidden: []}
+        case [m, *rest]:
+            if skip_mod(m) or seen_has(seen, m):
+                load_imps(dir, rest, seen)
+            else:
+                got = load_mod_file(dir, m)
+                pr = parse_program(tokenize(got.src, got.path), 0)
+                inner = load_imps(dirname(got.path), pr.imps, [*seen, m])
+                more = load_imps(dir, rest, inner.seen)
+                {stmts: [*inner.stmts, *ds_stmts(pr.v), *more.stmts], seen: more.seen, hidden: [*hidden_of(pr), *inner.hidden, *more.hidden]}
+
+def compile_text(src: Text, dir: Text) -> {IO} Text:
+    pr = parse_program(tokenize(src, "t.h2o"), 0)
+    loaded = load_imps(dir, pr.imps, [])
+    em = emit_program([*loaded.stmts, *ds_stmts(pr.v)], 0)
+    cat(prelude_py(), em.h)
+
+def emit_py_path(src_path: Text, do_check: Bool) -> {IO} Text:
+    got = open_prog(src_path)
+    if do_check:
+        check_prog(got.ds)
+        check_exports(got.root, got.hidden)
+    em = emit_program(got.ds, 0)
+    cat(prelude_py(), em.h)
+
+def compile_path(src_path: Text) -> {IO} Text:
+    emit_py_path(src_path, True)
+
+def write_py(src_path: Text, out_path: Text, do_check: Bool) -> {IO} ():
+    py = emit_py_path(src_path, do_check)
+    io.write_file(out_path, py)
+    chmod_x(out_path)
+
+def check_path(src_path: Text) -> {IO} ():
+    got = open_prog(src_path)
+    check_prog(got.ds)
+    check_exports(got.root, got.hidden)
+    ()
+
+def dump_ir_path(src_path: Text) -> {IO} ():
+    got = open_prog(src_path)
+    println(dump_ir(got.ds))
+
+def open_prog(src_path: Text) -> {IO} {path: Text, ds: List, root: List, hidden: List}:
+    path = resolve_src(src_path)
+    src = io.read_file(path)
+    pr = parse_program(tokenize(src, path), 0)
+    loaded = load_imps(dirname(path), pr.imps, [])
+    root = ds_stmts(pr.v)
+    {path: path, ds: [*loaded.stmts, *root], root: root, hidden: loaded.hidden}
+
+def load_stmts(src_path: Text) -> {IO} {path: Text, ds: List, root: List, hidden: List}:
+    open_prog(src_path)
+
+def stmt_is_main(s):
+    match s:
+        case DDef(w):
+            w.name == "main"
+        case _:
+            False
+
+def run_path(src_path: Text) -> {IO} ():
+    got = open_prog(src_path)
+    if not any(got.ds, stmt_is_main):
+        die("找不到 def main")
+    check_prog(got.ds)
+    check_exports(got.root, got.hidden)
+    img = emit_bc_program(got.ds)
+    vm_exec(img.code, img.strs, img.fns, img.main_id)
+
+def dump_bc_path(src_path: Text) -> {IO} ():
+    got = load_stmts(src_path)
+    img = emit_bc_program(got.ds)
+    println(join(["code ", int_to_text(list_len(img.code)), " strs ", int_to_text(list_len(img.strs)), " fns ", int_to_text(list_len(img.fns))], ""))
+
+def build_vm_path(src_path: Text, out_path: Text, do_check: Bool) -> {IO} ():
+    got = open_prog(src_path)
+    if do_check:
+        check_prog(got.ds)
+        check_exports(got.root, got.hidden)
+    img = emit_bc_program(got.ds)
+    rt = io.read_file("compiler/rt.c")
+    cpath = cat(out_path, ".c")
+    io.write_file(cpath, cat(rt, emit_bc_c_text(img)))
+    rc = cc_link(cpath, out_path)
+    if rc != 0:
+        die("cc failed")
+
+def build_native_path(src_path: Text, out_path: Text, do_check: Bool) -> {IO} ():
+    got = open_prog(src_path)
+    if do_check:
+        check_prog(got.ds)
+        check_exports(got.root, got.hidden)
+    rt = io.read_file("compiler/rt.c")
+    cpath = cat(out_path, ".c")
+    io.write_file(cpath, cat(rt, emit_nat_c_text(got.ds)))
+    rc = cc_link(cpath, out_path)
+    if rc != 0:
+        die("cc failed")
+
+def ends_with(p, suf):
+    n = text_len(p)
+    m = text_len(suf)
+    if n < m:
+        False
+    else:
+        slice_text(p, n - m, n) == suf
+
+def build_wasm_path(src_path: Text, out_path: Text, do_check: Bool) -> {IO} ():
+    got = open_prog(src_path)
+    if do_check:
+        check_prog(got.ds)
+        check_exports(got.root, got.hidden)
+    img = emit_bc_program(got.ds)
+    rt = io.read_file("compiler/rt.c")
+    cpath = cat(out_path, ".c")
+    io.write_file(cpath, cat(rt, emit_bc_c_text(img)))
+    rc = shell_run(join(["sh compiler/wasi-cc.sh ", cpath, " ", out_path], ""))
+    if rc != 0:
+        die("wasi-cc failed")
+
+def finish_build(vm, nocheck, src, out, tgt) -> {IO} ():
+    if src == "" or out == "":
+        die("usage: h2o build [--vm] [--native] [--target wasm] [--no-check] in.h2o -o out")
+    else:
+        do_check = not nocheck
+        if tgt == "wasm":
+            build_wasm_path(src, out, do_check)
+        elif tgt == "native":
+            build_native_path(src, out, do_check)
+        elif vm:
+            build_vm_path(src, out, do_check)
+        elif tgt != "":
+            die(cat("unknown --target ", tgt))
+        elif ends_with(out, ".py") or ends_with(src, "h2oc.h2o"):
+            write_py(src, out, do_check)
+        else:
+            build_vm_path(src, out, do_check)
+
+def parse_build(args, i, vm, nocheck, src, out, tgt) -> {IO} ():
+    if i >= list_len(args):
+        finish_build(vm, nocheck, src, out, tgt)
+    else:
+        a = nth(args, i)
+        if a == "--vm":
+            parse_build(args, i + 1, True, nocheck, src, out, tgt)
+        elif a == "--no-check":
+            parse_build(args, i + 1, vm, True, src, out, tgt)
+        elif a == "--native":
+            parse_build(args, i + 1, vm, nocheck, src, out, "native")
+        elif a == "--target":
+            if i + 1 >= list_len(args):
+                die("usage: h2o build --target wasm in.h2o -o out.wasm")
+            else:
+                parse_build(args, i + 2, vm, nocheck, src, out, nth(args, i + 1))
+        elif a == "-o":
+            if i + 1 >= list_len(args):
+                die("usage: h2o build [--vm] in.h2o -o out")
+            else:
+                parse_build(args, i + 2, vm, nocheck, src, nth(args, i + 1), tgt)
+        else:
+            parse_build(args, i + 1, vm, nocheck, a, out, tgt)
+
+def tok_step(acc, t) -> {IO} Int:
+    extra = if t.v == "":
+        ""
+    else:
+        cat(" ", t.v)
+    println(join([int_to_text(t.line), ":", int_to_text(t.col), "\t", t.k, extra], ""))
+    acc
+
+def tokens_path(src_path: Text) -> {IO} ():
+    src = io.read_file(src_path)
+    foldl(tokenize(src, src_path), 0, tok_step)
+    ()
+
+def fmt_path(src_path: Text, write: Bool) -> {IO} ():
+    src = io.read_file(src_path)
+    out = fmt_text(src)
+    if write:
+        io.write_file(src_path, out)
+    else:
+        io.write_file("/dev/stdout", out)
+
+def fmt_argv(args) -> {IO} ():
+    if list_len(args) >= 4 and nth(args, 2) == "-w":
+        fmt_path(nth(args, 3), True)
+    elif list_len(args) >= 4 and nth(args, 3) == "-w":
+        fmt_path(nth(args, 2), True)
+    elif list_len(args) >= 3:
+        fmt_path(nth(args, 2), False)
+    else:
+        die("usage: h2o fmt [-w] file.h2o")
+
+def diagnostics_path(src_path: Text) -> {IO} ():
+    set_diag()
+    check_path(src_path)
+    println("[]")
+
+def vendor_has_slash(s):
+    any(range(text_len(s)), fn(i): slice_text(s, i, i + 1) == "/")
+
+def vendor_strip_git(p):
+    if ends_with(p, ".git"):
+        slice_text(p, 0, text_len(p) - 4)
+    else:
+        p
+
+def vendor_name_of(url):
+    p = vendor_strip_git(trim_slash(url))
+    k = last_slash(p)
+    if k >= text_len(p) - 1:
+        "pkg"
+    else:
+        slice_text(p, k + 1, text_len(p))
+
+def vendor_cmd(args) -> {IO} ():
+    if list_len(args) < 3:
+        die("usage: h2o vendor <git-url> [name]")
+    else:
+        url = nth(args, 2)
+        name = if list_len(args) >= 4:
+            nth(args, 3)
+        else:
+            vendor_name_of(url)
+        if name == "" or vendor_has_slash(name) or name == "." or name == "..":
+            die("vendor name must be a single directory")
+        else:
+            dest = cat("vendor/", name)
+            rc0 = shell_run(join(["mkdir -p vendor && test ! -e \"", dest, "\""], ""))
+            if rc0 != 0:
+                die(cat("already vendored: ", dest))
+            else:
+                rc = shell_run(join(["git clone -- \"", url, "\" \"", dest, "\""], ""))
+                if rc != 0:
+                    die("git clone failed")
+                else:
+                    println(dest)
+
+def main() -> {IO} ():
+    args = argv()
+    if list_len(args) < 2 or nth(args, 1) == "repl":
+        repl_main()
+    elif list_len(args) >= 3 and nth(args, 1) == "check":
+        check_path(nth(args, 2))
+        println("ok")
+    elif list_len(args) >= 3 and nth(args, 1) == "ir":
+        dump_ir_path(nth(args, 2))
+    elif list_len(args) >= 3 and nth(args, 1) == "run":
+        run_path(nth(args, 2))
+    elif list_len(args) >= 3 and nth(args, 1) == "dump-bc":
+        dump_bc_path(nth(args, 2))
+    elif list_len(args) >= 3 and nth(args, 1) == "tokens":
+        tokens_path(nth(args, 2))
+    elif list_len(args) >= 3 and nth(args, 1) == "diagnostics":
+        diagnostics_path(nth(args, 2))
+    elif list_len(args) >= 2 and nth(args, 1) == "fmt":
+        fmt_argv(args)
+    elif list_len(args) >= 3 and nth(args, 1) == "build":
+        parse_build(args, 2, False, False, "", "", "")
+    elif list_len(args) >= 2 and nth(args, 1) == "vendor":
+        vendor_cmd(args)
+    else:
+        if list_len(args) < 4:
+            die("usage: h2oc in.h2o -o out.py")
+        src_path = nth(args, 1)
+        flag = nth(args, 2)
+        out_path = nth(args, 3)
+        if flag != "-o":
+            die("usage: h2oc in.h2o -o out.py")
+        py = compile_path(src_path)
+        io.write_file(out_path, py)
+        chmod_x(out_path)

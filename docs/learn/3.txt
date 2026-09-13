@@ -1,0 +1,24 @@
+第 3 課  函數
+EN: Lesson 3  functions
+
+  def add(x, y):
+      x + y
+
+  add(1, 2)
+
+最後一個運算式就是回傳值。沒有 return 當日常寫法。
+註解可省略，檢查器會推：
+
+  def add(x: Int, y: Int) -> Int:
+      x + y
+
+多參數用逗號。沒有自動 curry。
+匿名函數：
+
+  fn(x): x + 1
+
+練習：
+
+  1) 定義 double(n)，回傳 n * 2，再 double(21)
+  2) :t double   應含 Int
+  3) 故意寫 double("a")，讀錯誤訊息

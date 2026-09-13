@@ -1,0 +1,19 @@
+# Core-0 驗收檔。單檔、無 import。
+#   h2o run examples/core0_hello.h2o
+
+type User = {name: Text, active: Bool}
+
+def active_names(users: List[User]) -> Text:
+    users
+        |> filter(_.active)
+        |> map(_.name)
+        |> join(", ")
+
+def main():
+    users = [
+        {name: "Ada", active: True},
+        {name: "Grace", active: False},
+        {name: "Edsger", active: True},
+    ]
+    if users != [] and active_names(users) != "":
+        println(f"active: {active_names(users)}")

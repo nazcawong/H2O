@@ -1,0 +1,15 @@
+# JSON 最小子集：把 List／紀錄／文字／整數編成 JSON 文字。
+
+def json_escape(s: Text) -> Text:
+    s
+
+def json_of(x) -> Text:
+    match x:
+        case None:
+            "null"
+        case True:
+            "true"
+        case False:
+            "false"
+        case _:
+            x

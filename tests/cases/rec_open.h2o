@@ -1,0 +1,5 @@
+def name_of[R](p: {name: Text, ...R}) -> Text:
+    p.name
+
+def main():
+    println(name_of({name: "Ada", age: 1}))

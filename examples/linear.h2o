@@ -1,0 +1,8 @@
+# Typed：once 資源。with 離開即關閉。
+
+def example() -> {IO} Text:
+    with io.open("examples/core0_hello.h2o") as f:
+        "opened"
+
+def main() -> {IO} ():
+    println(example())

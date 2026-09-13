@@ -1,0 +1,615 @@
+#!/bin/sh
+# H2O test harness — no Python. Seeds bin/h2o from compiler/seed.c if needed.
+set -u
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cd "$ROOT"
+H2O="$ROOT/h2o"
+IMG="$ROOT/bin/h2o"
+CASES="$ROOT/tests/cases"
+GOLDEN="$ROOT/tests/golden"
+EX="$ROOT/examples"
+
+if [ ! -x "$IMG" ]; then
+	sh "$ROOT/compiler/seed.sh" || exit 1
+fi
+
+pass=0
+fail=0
+td=$(mktemp -d)
+trap 'rm -rf "$td"' EXIT
+
+ok() {
+	pass=$((pass + 1))
+	printf 'ok  %s\n' "$1"
+}
+bad() {
+	fail=$((fail + 1))
+	printf 'FAIL %s: %s\n' "$1" "$2"
+}
+
+# Wall-clock seconds via POSIX /usr/bin/time -p (stderr). No Python.
+real_s() {
+	/usr/bin/time -p "$@" >/dev/null 2>"$td/tm"
+	awk '/^real/{print $2; exit}' "$td/tm"
+}
+
+median_n() {
+	printf '%s\n' "$@" | sort -n | awk '
+		{ a[NR]=$1 }
+		END { if (NR<1) print 0; else print a[int((NR+1)/2)] }
+	'
+}
+
+run_cap() {
+	# $1=stdout file $2=stderr file; rest = command
+	outf=$1
+	errf=$2
+	shift 2
+	"$@" >"$outf" 2>"$errf"
+	echo $?
+}
+
+expect_run() {
+	name=$1
+	file=$2
+	needle=$3
+	rc=$(run_cap "$td/out" "$td/err" "$H2O" run "$file")
+	if [ "$rc" != 0 ]; then
+		bad "$name" "rc=$rc $(cat "$td/err" "$td/out")"
+		return
+	fi
+	if grep -q "$needle" "$td/out"; then
+		ok "$name"
+	else
+		bad "$name" "missing '$needle' in $(cat "$td/out")"
+	fi
+}
+
+expect_check_ok() {
+	name=$1
+	file=$2
+	rc=$(run_cap "$td/out" "$td/err" "$H2O" check "$file")
+	if [ "$rc" = 0 ]; then
+		ok "$name"
+	else
+		bad "$name" "$(cat "$td/err" "$td/out")"
+	fi
+}
+
+expect_err() {
+	name=$1
+	file=$2
+	needle=$3
+	rc=$(run_cap "$td/out" "$td/err" "$H2O" check "$file")
+	blob=$(cat "$td/err" "$td/out")
+	if [ "$rc" = 0 ]; then
+		bad "$name" "expected failure"
+		return
+	fi
+	if echo "$blob" | grep -q "$needle"; then
+		ok "$name"
+	else
+		bad "$name" "missing '$needle' in $blob"
+	fi
+}
+
+expect_run_err() {
+	name=$1
+	file=$2
+	needle=$3
+	rc=$(run_cap "$td/out" "$td/err" "$H2O" run "$file")
+	blob=$(cat "$td/err" "$td/out")
+	if [ "$rc" = 0 ]; then
+		bad "$name" "expected failure"
+		return
+	fi
+	if echo "$blob" | grep -q "$needle"; then
+		ok "$name"
+	else
+		bad "$name" "missing '$needle' in $blob"
+	fi
+}
+
+expect_golden() {
+	name=$1
+	src=$2
+	cp "$src" "$td/t.h2o"
+	run_cap "$td/out" "$td/err" "$H2O" check "$td/t.h2o" >/dev/null
+	got=$(cat "$td/err" "$td/out" | sed 's|.*/t.h2o:|t.h2o:|' | tr -d '\r' | sed 's/[[:space:]]*$//')
+	exp=$(tr -d '\r' <"$GOLDEN/$name.txt" | sed 's/[[:space:]]*$//')
+	if [ "$got" = "$exp" ]; then
+		ok "golden $name"
+	else
+		bad "golden $name" "got=[$got] exp=[$exp]"
+	fi
+}
+
+# --- examples ---
+expect_run core0 "$EX/core0_hello.h2o" "active: Ada, Edsger"
+expect_run bh "$EX/bh_hello.h2o" "hello Ada, hello Edsger"
+expect_run main "$EX/main.h2o" "active: Ada, Edsger"
+expect_run traits "$EX/traits.h2o" "ok"
+expect_run records "$EX/records.h2o" "same-field"
+expect_run effects "$EX/effects.h2o" "fake-ok"
+expect_run stream "$EX/stream.h2o" "ok"
+expect_run conc "$EX/conc.h2o" "together"
+expect_run linear "$EX/linear.h2o" "opened"
+expect_run ffi "$EX/ffi.h2o" "7"
+expect_check_ok check_ffi "$EX/ffi.h2o"
+expect_err ffi_abs_text "$CASES/ffi_abs_text.h2o" "不能當"
+expect_err ffi_unknown "$CASES/ffi_unknown.h2o" "沒有 ffi"
+expect_run ffi_ok "$CASES/ffi_ok.h2o" "7"
+expect_run vect "$EX/vect.h2o" "vect-ok"
+expect_check_ok check_vect "$EX/vect.h2o"
+expect_err vect_empty_head "$CASES/vect_empty_head.h2o" "不能當"
+expect_err vect_mismatch "$CASES/vect_mismatch.h2o" "不能當"
+expect_err vect_lit "$CASES/vect_lit.h2o" "vect 只要列表字面"
+expect_check_ok vect_cons_ok "$CASES/vect_cons_ok.h2o"
+expect_run vect_head_ok "$CASES/vect_head_ok.h2o" "ok"
+expect_run vect_cons_run "$CASES/vect_cons_ok.h2o" "b"
+expect_run json "$EX/json_tool.h2o" "json-ok"
+expect_run stats "$EX/tools/stats.h2o" "stats-ok"
+n=$(wc -l <"$EX/tools/stats.h2o")
+if [ "$n" -ge 200 ]; then
+	ok "stats-lines"
+else
+	bad "stats-lines" "lines=$n"
+fi
+
+# --- small programs ---
+expect_run if_true "$CASES/if_true.h2o" "if-ok"
+expect_run eq_sym "$CASES/eq_sym.h2o" "sym"
+expect_run match_list "$CASES/match_list.h2o" "a"
+expect_run index_maybe "$CASES/index_maybe.h2o" "none"
+expect_run maybe_ok "$CASES/maybe_ok.h2o" "0"
+expect_run total_match "$CASES/total_match_ok.h2o" "ok"
+
+# --- check ---
+expect_check_ok check_core0 "$EX/core0_hello.h2o"
+expect_check_ok check_compiler "$ROOT/compiler/h2oc.h2o"
+expect_check_ok check_forward "$CASES/forward_ref.h2o"
+expect_check_ok unify_ok "$CASES/unify_ok.h2o"
+expect_check_ok io_ann "$CASES/io_ann.h2o"
+expect_check_ok check_traits "$EX/traits.h2o"
+expect_check_ok eq_color_raw "$CASES/eq_color_raw.h2o"
+expect_check_ok check_prelude "$EX/prelude.h2o"
+expect_run prelude "$EX/prelude.h2o" "prelude-ok"
+expect_run comp_ok "$CASES/comp_ok.h2o" "comp-ok"
+expect_err priv_hidden "$CASES/priv_hidden.h2o" "未匯出"
+expect_run pub_ok "$CASES/pub_ok.h2o" "shown-ok"
+expect_run pkg_dir "$ROOT/tests/pkg/use_greet.h2o" "greet-ok"
+expect_run pkg_tool "$ROOT/tests/pkg/tool" "dir-run"
+
+expect_err state "$CASES/pure_state_get.h2o" "這裡不能用 State"
+expect_err unify_mismatch "$CASES/unify_mismatch.h2o" "這是 Text，不能當 Int 用"
+expect_err plus_text "$CASES/plus_text.h2o" "這是 Text，不能當 Int 用"
+expect_err map_int "$CASES/map_int.h2o" "List"
+expect_err eq_color "$CASES/eq_color.h2o" "沒有 Eq"
+expect_err functor_int "$CASES/functor_int.h2o" "沒有 Functor"
+expect_err functor_dup "$CASES/functor_dup.h2o" "已有 Functor"
+expect_err kind_int "$CASES/kind_int.h2o" "Int 不是 F"
+expect_err kind_applied "$CASES/kind_applied.h2o" "已填類型參數"
+expect_err rec_miss "$CASES/rec_miss.h2o" "沒有欄位"
+expect_err rec_extra "$CASES/rec_extra.h2o" "不能當"
+expect_run rec_open "$CASES/rec_open.h2o" "Ada"
+expect_err call_io "$CASES/call_io.h2o" "這裡不能用 IO"
+expect_run functor_maybe "$CASES/functor_maybe.h2o" "functor-2"
+expect_err join_int "$CASES/join_int.h2o" "不能當 List"
+expect_run map_ok "$CASES/map_ok.h2o" "2"
+expect_err color "$CASES/match_color.h2o" "match 沒有涵蓋 Blue"
+expect_err pure_println "$CASES/pure_println.h2o" "這裡不能用 IO"
+expect_err pure_eprint "$CASES/pure_eprint.h2o" "這裡不能用 IO"
+expect_err pure_exit "$CASES/pure_exit.h2o" "這裡不能用 IO"
+expect_check_ok check_wc "$ROOT/tests/pkg/wc"
+expect_check_ok check_ex_wc "$EX/wc"
+expect_check_ok check_count "$EX/count"
+rc=$(run_cap "$td/out" "$td/err" "$H2O" run "$EX/count" "$EX/count/sample.txt")
+if [ "$rc" = 0 ] && cmp -s "$td/out" "$GOLDEN/count.txt"; then
+	ok ex-count
+else
+	bad ex-count "rc=$rc out=[$(cat "$td/out")] err=$(cat "$td/err")"
+fi
+rc=$(run_cap "$td/out" "$td/err" "$H2O" run "$EX/count")
+if [ "$rc" = 2 ] && grep -q usage "$td/err"; then
+	ok count-usage
+else
+	bad count-usage "rc=$rc err=$(cat "$td/err") out=$(cat "$td/out")"
+fi
+rc=$(run_cap "$td/out" "$td/err" "$H2O" run "$EX/wc" "$EX/wc/sample.txt")
+if [ "$rc" = 0 ] && cmp -s "$td/out" "$GOLDEN/wc.txt"; then
+	ok ex-wc
+else
+	bad ex-wc "rc=$rc out=[$(cat "$td/out")] err=$(cat "$td/err")"
+fi
+rc=$(run_cap "$td/out" "$td/err" "$H2O" run "$ROOT/tests/pkg/wc" "$ROOT/tests/pkg/wc/in.txt")
+if [ "$rc" = 0 ] && cmp -s "$td/out" "$GOLDEN/wc.txt"; then
+	ok wc-run
+else
+	bad wc-run "rc=$rc out=[$(cat "$td/out")] err=$(cat "$td/err")"
+fi
+rc=$(run_cap "$td/out" "$td/err" "$H2O" run "$ROOT/tests/pkg/wc")
+if [ "$rc" = 2 ] && grep -q usage "$td/err"; then
+	ok wc-usage
+else
+	bad wc-usage "rc=$rc err=$(cat "$td/err") out=$(cat "$td/out")"
+fi
+expect_err none "$CASES/match_maybe_none.h2o" "match 沒有涵蓋 None"
+expect_err parens "$CASES/if_parens.h2o" "條件不要括號"
+expect_err total_self "$CASES/total_self.h2o" "total 定義不能無條件呼叫自己"
+expect_err total_if "$CASES/total_if.h2o" "total"
+expect_err once "$CASES/once_unused.h2o" "漏關"
+expect_err once_alias "$CASES/once_alias.h2o" "不能用兩次"
+expect_err once_alias_twice "$CASES/once_alias_twice.h2o" "不能用兩次"
+expect_err once_field "$CASES/once_field.h2o" "不能用兩次"
+expect_err once_twice "$CASES/once_twice.h2o" "不能用兩次"
+expect_err once_if_miss "$CASES/once_if_miss.h2o" "漏關"
+expect_err once_with_twice "$CASES/once_with_twice.h2o" "不能用兩次"
+expect_check_ok once_ok "$CASES/once_ok.h2o"
+expect_check_ok once_move_ok "$CASES/once_move_ok.h2o"
+expect_check_ok once_if_ok "$CASES/once_if_ok.h2o"
+expect_run_err method "$CASES/method_call.h2o" "不是方法"
+expect_run_err nomain "$CASES/missing_main.h2o" "main"
+
+printf 'def main():\n\tprintln("x")\n' >"$td/tab.h2o"
+expect_run_err tab "$td/tab.h2o" "char"
+
+expect_golden pure_state_get "$CASES/pure_state_get.h2o"
+expect_golden match_maybe_none "$CASES/match_maybe_none.h2o"
+expect_golden if_parens "$CASES/if_parens.h2o"
+expect_golden plus_text "$CASES/plus_text.h2o"
+expect_golden unify_mismatch "$CASES/unify_mismatch.h2o"
+expect_golden match_color "$CASES/match_color.h2o"
+expect_golden rec_miss "$CASES/rec_miss.h2o"
+expect_golden rec_extra "$CASES/rec_extra.h2o"
+expect_golden kind_int "$CASES/kind_int.h2o"
+expect_golden kind_applied "$CASES/kind_applied.h2o"
+expect_golden functor_dup "$CASES/functor_dup.h2o"
+
+# goldens must not leak internals
+blob=$(cat "$td/err" "$td/out" 2>/dev/null || true)
+for badw in Constraint "Core." TcM TArrow; do
+	if echo "$blob" | grep -q "$badw"; then
+		bad "no-internal $badw" "leaked"
+	else
+		ok "no-internal $badw"
+	fi
+done
+
+# --- tokens / ir / fmt / diagnostics ---
+rc=$(run_cap "$td/out" "$td/err" "$H2O" tokens "$EX/core0_hello.h2o")
+if [ "$rc" = 0 ] && grep -q indent "$td/out" && grep -q dedent "$td/out" && grep -q pipe "$td/out" && grep -q eof "$td/out"; then
+	ok tokens
+else
+	bad tokens "$(cat "$td/out" "$td/err")"
+fi
+
+rc=$(run_cap "$td/out" "$td/err" "$H2O" ir "$EX/core0_hello.h2o")
+if [ "$rc" = 0 ] && grep -q IDef "$td/out" && grep -q active_names "$td/out"; then
+	ok ir
+else
+	bad ir "$(cat "$td/out" "$td/err")"
+fi
+
+rc=$(run_cap "$td/out" "$td/err" "$H2O" fmt "$EX/core0_hello.h2o")
+printf '%s' "$(cat "$td/out")" >"$td/fmt1.h2o"
+rc2=$(run_cap "$td/out2" "$td/err2" "$H2O" fmt "$td/fmt1.h2o")
+if [ "$rc" = 0 ] && [ "$rc2" = 0 ] && cmp -s "$td/out" "$td/out2"; then
+	ok fmt-idemp
+else
+	bad fmt-idemp "rc=$rc/$rc2"
+fi
+
+rc=$(run_cap "$td/out" "$td/err" "$H2O" diagnostics "$EX/bh_hello.h2o")
+if [ "$rc" = 0 ] && grep -q '\[]' "$td/out"; then
+	ok diag-ok
+else
+	bad diag-ok "$(cat "$td/out" "$td/err")"
+fi
+rc=$(run_cap "$td/out" "$td/err" "$H2O" diagnostics "$CASES/pure_state_get.h2o")
+if [ "$rc" != 0 ] && grep -q State "$td/out"; then
+	ok diag-err
+else
+	bad diag-err "$(cat "$td/out" "$td/err")"
+fi
+
+# --- build ---
+rc=$(run_cap "$td/out" "$td/err" "$H2O" build "$EX/core0_hello.h2o" -o "$td/hello.py")
+if [ "$rc" = 0 ] && grep -q Ada "$td/hello.py" && ! grep -q proto "$td/hello.py"; then
+	ok build-py
+else
+	bad build-py "$(cat "$td/err")"
+fi
+
+if command -v cc >/dev/null 2>&1; then
+	rc=$(run_cap "$td/out" "$td/err" "$H2O" build --vm "$EX/vm_add.h2o" -o "$td/vmadd")
+	if [ "$rc" = 0 ] && grep -q _h2o_fns "$td/vmadd.c" && ! grep -q 'main_h2o()' "$td/vmadd.c"; then
+		got=$("$td/vmadd")
+		echo "$got" | grep -q 3 && ok vm-add || bad vm-add "out=$got"
+	else
+		bad vm-add "$(cat "$td/err")"
+	fi
+	rc=$(run_cap "$td/out" "$td/err" "$H2O" build --native "$EX/core0_hello.h2o" -o "$td/nat")
+	if [ "$rc" = 0 ] && grep -q h2o_main "$td/nat.c" && grep -q h2o_nat_fns "$td/nat.c" && ! grep -q 'return vm_run' "$td/nat.c"; then
+		got=$("$td/nat")
+		echo "$got" | grep -q "active: Ada, Edsger" && ok native || bad native "out=$got"
+	else
+		bad native "$(cat "$td/err") c=$(grep -c h2o_main "$td/nat.c" 2>/dev/null)"
+	fi
+	rc=$(run_cap "$td/out" "$td/err" "$H2O" build --native "$EX/count" -o "$td/ncount")
+	if [ "$rc" != 0 ]; then
+		bad native-count "$(cat "$td/err")"
+	else
+		got=$("$td/ncount" run examples/count "$EX/count/sample.txt")
+		syms=$(nm "$td/ncount" 2>/dev/null || true)
+		if echo "$got" | grep -q '^count 3$' && echo "$syms" | grep -q nlines; then
+			ok native-count
+			# N1: native wall clock below h2o run (warmup + median; jitter ok).
+			i=0
+			while [ "$i" -lt 2 ]; do
+				"$td/ncount" run examples/count "$EX/count/sample.txt" >/dev/null 2>&1 || true
+				"$H2O" run "$EX/count" "$EX/count/sample.txt" >/dev/null 2>&1 || true
+				i=$((i + 1))
+			done
+			nt=
+			rt=
+			i=0
+			while [ "$i" -lt 5 ]; do
+				nt="$nt $(real_s "$td/ncount" run examples/count "$EX/count/sample.txt")"
+				rt="$rt $(real_s "$H2O" run "$EX/count" "$EX/count/sample.txt")"
+				i=$((i + 1))
+			done
+			nmed=$(median_n $nt)
+			rmed=$(median_n $rt)
+			if awk -v n="$nmed" -v r="$rmed" 'BEGIN { exit (n+0 < r+0) ? 0 : 1 }'; then
+				ok native-fast
+			else
+				bad native-fast "native_med=$nmed run_med=$rmed nt=$nt rt=$rt"
+			fi
+		else
+			bad native-count "out=$got nm=$(echo "$syms" | grep h2o | head)"
+		fi
+	fi
+	otool -L "$IMG" >/tmp/h2o-libs 2>/dev/null || ldd "$IMG" >/tmp/h2o-libs 2>/dev/null || true
+	if grep -qi python /tmp/h2o-libs 2>/dev/null; then
+		bad otool "python in image"
+	else
+		ok otool
+	fi
+else
+	ok skip-cc
+fi
+
+rc=$(run_cap "$td/out" "$td/err" "$H2O" build --target wasm "$EX/core0_hello.h2o" -o "$td/core0.wasm")
+sig=$(od -An -tx1 -N4 "$td/core0.wasm" 2>/dev/null | tr -d ' \n')
+if [ "$rc" != 0 ] || [ "$sig" != "0061736d" ]; then
+	bad wasm "rc=$rc sig=$sig err=$(cat "$td/err")"
+elif grep -q '_h2o_fns' "$td/core0.wasm.c" && grep -q 'return vm_run' "$td/core0.wasm.c" && ! grep -q 'active: Ada, Edsger' "$td/core0.wasm.c"; then
+	if command -v wasmtime >/dev/null 2>&1; then
+		got=$(wasmtime --dir=. "$td/core0.wasm" 2>"$td/werr")
+		wrc=$?
+		if [ "$wrc" = 0 ] && echo "$got" | grep -q "active: Ada, Edsger"; then
+			ok wasm
+		else
+			bad wasm "wasmtime rc=$wrc out=$got err=$(cat "$td/werr")"
+		fi
+		rc=$(run_cap "$td/out" "$td/err" "$H2O" build --target wasm "$EX/wc" -o "$td/wc.wasm")
+		if [ "$rc" != 0 ]; then
+			bad wasm-wc "$(cat "$td/err")"
+		else
+			got=$(wasmtime --dir=. "$td/wc.wasm" run examples/wc examples/wc/sample.txt 2>"$td/werr")
+			wrc=$?
+			if [ "$wrc" = 0 ] && echo "$got" | grep -q '^3$'; then
+				ok wasm-wc
+			else
+				bad wasm-wc "rc=$wrc out=$got err=$(cat "$td/werr")"
+			fi
+			rc=$(run_cap "$td/out" "$td/err" "$H2O" build --target wasm "$EX/count" -o "$td/count.wasm")
+			if [ "$rc" != 0 ]; then
+				bad wasm-count "$(cat "$td/err")"
+			else
+				got=$(wasmtime --dir=. "$td/count.wasm" run examples/count examples/count/sample.txt 2>"$td/werr")
+				wrc=$?
+				if [ "$wrc" = 0 ] && echo "$got" | grep -q '^count 3$'; then
+					ok wasm-count
+				else
+					bad wasm-count "rc=$wrc out=$got err=$(cat "$td/werr")"
+				fi
+			fi
+		fi
+	else
+		bad wasm "need wasmtime"
+	fi
+else
+	bad wasm "not a VM image (fake wat?)"
+fi
+
+# --- repl (Julia-shaped: prompt, continuation, errors don't kill) ---
+got=$(printf '1 + 2\n:quit\n' | "$H2O" repl 2>"$td/err")
+if echo "$got" | grep -q 3; then
+	ok repl-expr
+else
+	bad repl-expr "out=$got err=$(cat "$td/err")"
+fi
+got=$(printf ':t 1 + 2\n:quit\n' | "$H2O" repl 2>"$td/err")
+if echo "$got" | grep -q Int; then
+	ok repl-type
+else
+	bad repl-type "out=$got"
+fi
+got=$(printf 'def add(x, y):\n    x + y\n\nadd(1, 2)\n:quit\n' | "$H2O" repl 2>"$td/err")
+if echo "$got" | grep -q 3; then
+	ok repl-def
+else
+	bad repl-def "out=$got"
+fi
+got=$(printf '1 + "a"\n:t 1\n:quit\n' | "$H2O" repl 2>"$td/err")
+if echo "$got" | grep -q "不能當 Int" && echo "$got" | grep -q Int; then
+	ok repl-err
+else
+	bad repl-err "out=$got"
+fi
+got=$(printf '? map\n:quit\n' | "$H2O" repl 2>"$td/err")
+if echo "$got" | grep -q List; then
+	ok repl-help
+else
+	bad repl-help "out=$got"
+fi
+got=$(printf '?\nmap\n\n:quit\n' | "$H2O" repl 2>"$td/err")
+if echo "$got" | grep -q "help?>" && echo "$got" | grep -q List; then
+	ok repl-help-mode
+else
+	bad repl-help-mode "out=$got"
+fi
+got=$(printf ';echo REPL_SHELL\n:quit\n' | "$H2O" repl 2>"$td/err")
+if echo "$got" | grep -q REPL_SHELL; then
+	ok repl-shell
+else
+	bad repl-shell "out=$got"
+fi
+got=$(printf ']\n:quit\n' | "$H2O" repl 2>"$td/err")
+if echo "$got" | grep -q "pkg>" && echo "$got" | grep -q "no package" && echo "$got" | grep -q vendor; then
+	ok repl-pkg
+else
+	bad repl-pkg "out=$got"
+fi
+if command -v git >/dev/null 2>&1; then
+	vsrc="$td/vsrc"
+	mkdir -p "$vsrc"
+	cp "$ROOT/tests/pkg/vendor_src/"*.h2o "$vsrc/"
+	git -C "$vsrc" init -q
+	git -C "$vsrc" config user.email t@t.invalid
+	git -C "$vsrc" config user.name t
+	git -C "$vsrc" add .
+	git -C "$vsrc" commit -q -m init
+	mkdir -p "$td/vwork"
+	rc=$(run_cap "$td/out" "$td/err" sh -c "cd \"$td/vwork\" && \"$H2O\" vendor \"file://$vsrc\" hello")
+	if [ "$rc" != 0 ] || [ ! -f "$td/vwork/vendor/hello/mod.h2o" ]; then
+		bad vendor "$(cat "$td/err" "$td/out")"
+	else
+		ok vendor
+		rc=$(run_cap "$td/out" "$td/err" sh -c "cd \"$td/vwork\" && \"$H2O\" run vendor/hello")
+		if [ "$rc" = 0 ] && grep -q vendor-ok "$td/out"; then
+			ok vendor-run
+		else
+			bad vendor-run "rc=$rc out=$(cat "$td/out") err=$(cat "$td/err")"
+		fi
+		got=$(printf ':load vendor/hello/\ngreet()\n:quit\n' | sh -c "cd \"$td/vwork\" && \"$H2O\" repl" 2>"$td/err")
+		if echo "$got" | grep -q vendor-ok; then
+			ok vendor-load
+		else
+			bad vendor-load "out=$got err=$(cat "$td/err")"
+		fi
+	fi
+else
+	bad vendor "need git"
+fi
+got=$(printf '? 1\n:quit\n' | "$H2O" repl 2>"$td/err")
+if echo "$got" | grep -q "縮排"; then
+	ok repl-learn
+else
+	bad repl-learn "out=$got"
+fi
+got=$(printf '?\n8\n:quit\n' | "$H2O" repl 2>"$td/err")
+if echo "$got" | grep -q "入門" && echo "$got" | grep -q "練習題"; then
+	ok repl-learn-mode
+else
+	bad repl-learn-mode "out=$got"
+fi
+got=$(printf '? 9\n:quit\n' | "$H2O" repl 2>"$td/err")
+if echo "$got" | grep -q "第 9 課" && echo "$got" | grep -q impl; then
+	ok repl-learn-trait
+else
+	bad repl-learn-trait "out=$got"
+fi
+got=$(printf '? 10\n:quit\n' | "$H2O" repl 2>"$td/err")
+if echo "$got" | grep -q "第 10 課" && echo "$got" | grep -q "未匯出"; then
+	ok repl-learn-mod
+else
+	bad repl-learn-mod "out=$got"
+fi
+got=$(printf '? trait\n:quit\n' | "$H2O" repl 2>"$td/err")
+if echo "$got" | grep -q "沒有 Eq"; then
+	ok repl-learn-alias
+else
+	bad repl-learn-alias "out=$got"
+fi
+got=$(printf '? 11\n:quit\n' | "$H2O" repl 2>"$td/err")
+if echo "$got" | grep -q "第 11 課" && echo "$got" | grep -q "S\\[_\\]"; then
+	ok repl-learn-typed
+else
+	bad repl-learn-typed "out=$got"
+fi
+got=$(printf '? wasm\n:quit\n' | "$H2O" repl 2>"$td/err")
+if echo "$got" | grep -q "WASI" && echo "$got" | grep -q "不是 LLVM"; then
+	ok repl-learn-wasm
+else
+	bad repl-learn-wasm "out=$got"
+fi
+expect_run gc_churn "$CASES/gc_churn.h2o" "gc-ok"
+{
+	n=0
+	while [ "$n" -lt 40 ]; do
+		printf 'range(3000)\n'
+		n=$((n + 1))
+	done
+	printf ':quit\n'
+} >"$td/repl-gc.in"
+rc=$(run_cap "$td/out" "$td/err" "$H2O" repl <"$td/repl-gc.in")
+if [ "$rc" = 0 ]; then
+	ok repl-gc
+else
+	bad repl-gc "rc=$rc err=$(cat "$td/err")"
+fi
+
+# --- seed from C snapshot ---
+if command -v cc >/dev/null 2>&1; then
+	cp "$IMG" "$td/live-img"
+	rm -f "$IMG"
+	if sh "$ROOT/compiler/seed.sh"; then
+		got=$("$H2O" run "$EX/bh_hello.h2o")
+		if echo "$got" | grep -q "hello Ada, hello Edsger"; then
+			ok seed-cc
+		else
+			bad seed-cc "run: $got"
+		fi
+	else
+		bad seed-cc "cc seed.c failed"
+	fi
+	if [ -x "$td/live-img" ]; then
+		mv "$td/live-img" "$IMG"
+	fi
+else
+	ok skip-seed-cc
+fi
+
+# --- self-rebuild ---
+if command -v cc >/dev/null 2>&1 && [ "${SKIP_SELFHOST-}" != 1 ]; then
+	rc=$(run_cap "$td/out" "$td/err" "$H2O" build --vm --no-check "$ROOT/compiler/h2oc.h2o" -o "$td/s1")
+	if [ "$rc" != 0 ]; then
+		bad self-s1 "$(cat "$td/err")"
+	else
+		got=$("$td/s1" run "$EX/core0_hello.h2o")
+		if echo "$got" | grep -q "active: Ada, Edsger"; then
+			ok self-s1
+			rc=$(run_cap "$td/out" "$td/err" "$td/s1" build --vm --no-check "$ROOT/compiler/h2oc.h2o" -o "$td/s2")
+			if [ "$rc" != 0 ]; then
+				bad self-s2 "$(cat "$td/err")"
+			elif cmp -s "$td/s1.c" "$td/s2.c"; then
+				ok self-fixed-point
+			else
+				bad self-fixed-point "s1.c != s2.c"
+			fi
+		else
+			bad self-s1 "run: $got"
+		fi
+	fi
+else
+	ok skip-selfhost
+fi
+
+echo
+echo "passed $pass  failed $fail"
+if [ "$fail" -ne 0 ]; then
+	exit 1
+fi
+exit 0

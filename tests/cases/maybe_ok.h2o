@@ -1,0 +1,8 @@
+def f(m: Maybe[Int]) -> Int:
+    match m:
+        case None:
+            0
+        case Some(n):
+            n
+def main() -> {IO} ():
+    println(f(None))

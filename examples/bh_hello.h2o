@@ -1,0 +1,11 @@
+# BH 子集驗收：h2oc 必須能編譯這份，且自己也用同一子集寫。
+
+def greet(name):
+    cat("hello ", name)
+
+def main() -> {IO} ():
+    xs = ["Ada", "Edsger"]
+    ys = map(xs, fn(x): greet(x))
+    s = join(ys, ", ")
+    if s != "":
+        println(s)

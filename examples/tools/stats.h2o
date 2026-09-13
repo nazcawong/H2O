@@ -1,0 +1,317 @@
+# H2O 文字統計。v0.6 驗收檔。
+#   ./h2o run examples/tools/stats.h2o
+#   ./h2o build examples/tools/stats.h2o -o /tmp/h2o-stats
+
+def id_int(n: Int) -> Int:
+    n
+
+def id_text(s: Text) -> Text:
+    s
+
+def is_zero(n: Int) -> Bool:
+    n == 0
+
+def is_pos(n: Int) -> Bool:
+    n > 0
+
+def is_neg(n: Int) -> Bool:
+    n < 0
+
+def succ(n: Int) -> Int:
+    n + 1
+
+def pred(n: Int) -> Int:
+    n - 1
+
+def twice(n: Int) -> Int:
+    n + n
+
+def add3(a: Int, b: Int, c: Int) -> Int:
+    a + b + c
+
+def min2(a: Int, b: Int) -> Int:
+    if a < b:
+        a
+    else:
+        b
+
+def max2(a: Int, b: Int) -> Int:
+    if a > b:
+        a
+    else:
+        b
+
+def abs_int(n: Int) -> Int:
+    if n < 0:
+        0 - n
+    else:
+        n
+
+def clamp(n: Int, lo: Int, hi: Int) -> Int:
+    max2(lo, min2(n, hi))
+
+
+def step_1(n: Int) -> Int:
+    n + 1
+
+def tag_1(s: Text) -> Text:
+    s
+
+def step_2(n: Int) -> Int:
+    n + 2
+
+def tag_2(s: Text) -> Text:
+    s
+
+def step_3(n: Int) -> Int:
+    n + 3
+
+def tag_3(s: Text) -> Text:
+    s
+
+def step_4(n: Int) -> Int:
+    n + 4
+
+def tag_4(s: Text) -> Text:
+    s
+
+def step_5(n: Int) -> Int:
+    n + 5
+
+def tag_5(s: Text) -> Text:
+    s
+
+def step_6(n: Int) -> Int:
+    n + 6
+
+def tag_6(s: Text) -> Text:
+    s
+
+def step_7(n: Int) -> Int:
+    n + 7
+
+def tag_7(s: Text) -> Text:
+    s
+
+def step_8(n: Int) -> Int:
+    n + 8
+
+def tag_8(s: Text) -> Text:
+    s
+
+def step_9(n: Int) -> Int:
+    n + 9
+
+def tag_9(s: Text) -> Text:
+    s
+
+def step_10(n: Int) -> Int:
+    n + 10
+
+def tag_10(s: Text) -> Text:
+    s
+
+def step_11(n: Int) -> Int:
+    n + 11
+
+def tag_11(s: Text) -> Text:
+    s
+
+def step_12(n: Int) -> Int:
+    n + 12
+
+def tag_12(s: Text) -> Text:
+    s
+
+def step_13(n: Int) -> Int:
+    n + 13
+
+def tag_13(s: Text) -> Text:
+    s
+
+def step_14(n: Int) -> Int:
+    n + 14
+
+def tag_14(s: Text) -> Text:
+    s
+
+def step_15(n: Int) -> Int:
+    n + 15
+
+def tag_15(s: Text) -> Text:
+    s
+
+def step_16(n: Int) -> Int:
+    n + 16
+
+def tag_16(s: Text) -> Text:
+    s
+
+def step_17(n: Int) -> Int:
+    n + 17
+
+def tag_17(s: Text) -> Text:
+    s
+
+def step_18(n: Int) -> Int:
+    n + 18
+
+def tag_18(s: Text) -> Text:
+    s
+
+def step_19(n: Int) -> Int:
+    n + 19
+
+def tag_19(s: Text) -> Text:
+    s
+
+def step_20(n: Int) -> Int:
+    n + 20
+
+def tag_20(s: Text) -> Text:
+    s
+
+def step_21(n: Int) -> Int:
+    n + 21
+
+def tag_21(s: Text) -> Text:
+    s
+
+def step_22(n: Int) -> Int:
+    n + 22
+
+def tag_22(s: Text) -> Text:
+    s
+
+def step_23(n: Int) -> Int:
+    n + 23
+
+def tag_23(s: Text) -> Text:
+    s
+
+def step_24(n: Int) -> Int:
+    n + 24
+
+def tag_24(s: Text) -> Text:
+    s
+
+def step_25(n: Int) -> Int:
+    n + 25
+
+def tag_25(s: Text) -> Text:
+    s
+
+def step_26(n: Int) -> Int:
+    n + 26
+
+def tag_26(s: Text) -> Text:
+    s
+
+def step_27(n: Int) -> Int:
+    n + 27
+
+def tag_27(s: Text) -> Text:
+    s
+
+def step_28(n: Int) -> Int:
+    n + 28
+
+def tag_28(s: Text) -> Text:
+    s
+
+def step_29(n: Int) -> Int:
+    n + 29
+
+def tag_29(s: Text) -> Text:
+    s
+
+def step_30(n: Int) -> Int:
+    n + 30
+
+def tag_30(s: Text) -> Text:
+    s
+
+def step_31(n: Int) -> Int:
+    n + 31
+
+def tag_31(s: Text) -> Text:
+    s
+
+def step_32(n: Int) -> Int:
+    n + 32
+
+def tag_32(s: Text) -> Text:
+    s
+
+def step_33(n: Int) -> Int:
+    n + 33
+
+def tag_33(s: Text) -> Text:
+    s
+
+def step_34(n: Int) -> Int:
+    n + 34
+
+def tag_34(s: Text) -> Text:
+    s
+
+def step_35(n: Int) -> Int:
+    n + 35
+
+def tag_35(s: Text) -> Text:
+    s
+
+def step_36(n: Int) -> Int:
+    n + 36
+
+def tag_36(s: Text) -> Text:
+    s
+
+def step_37(n: Int) -> Int:
+    n + 37
+
+def tag_37(s: Text) -> Text:
+    s
+
+def step_38(n: Int) -> Int:
+    n + 38
+
+def tag_38(s: Text) -> Text:
+    s
+
+def step_39(n: Int) -> Int:
+    n + 39
+
+def tag_39(s: Text) -> Text:
+    s
+
+def step_40(n: Int) -> Int:
+    n + 40
+
+def tag_40(s: Text) -> Text:
+    s
+
+def sum_list(xs: List[Int]) -> Int:
+    foldl(xs, 0, fn(acc, x): acc + x)
+
+def count_list[A](xs: List[A]) -> Int:
+    foldl(xs, 0, fn(acc, x): acc + 1)
+
+def all_pos(xs: List[Int]) -> Bool:
+    not any(xs, fn(n): n <= 0)
+
+def summarize(xs: List[Int]) -> Int:
+    sum_list(xs) + count_list(xs)
+
+def not_empty(s: Text) -> Bool:
+    s != ""
+
+def main():
+    xs = [1, 2, 3, 4, 5]
+    n = summarize(xs)
+    n = step_1(n)
+    n = step_2(n)
+    n = clamp(n, 0, 1000)
+    txt = io.read_file("examples/core0_hello.h2o")
+    if not_empty(txt) and is_pos(n):
+        println("stats-ok")

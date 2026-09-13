@@ -1,0 +1,9 @@
+trait Functor[F[_]]:
+    def map[A, B](fa: F[A], f: A -> B) -> F[B]
+
+impl Functor[Int]:
+    def map(xs, f):
+        xs
+
+def main():
+    println("x")

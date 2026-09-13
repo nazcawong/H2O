@@ -1,0 +1,1209 @@
+# h2oc parse — BH 子集。
+def parse_snippet(s):
+    parse_expr(snippet_toks(s), 0).v
+
+def fstr_step(st, ch):
+    if st.expr:
+        if ch == "{":
+            {buf: cat(st.buf, ch), parts: st.parts, expr: True, depth: st.depth + 1}
+        elif ch == "}":
+            if st.depth == 1:
+                {buf: "", parts: [*st.parts, FExp(parse_snippet(st.buf))], expr: False, depth: 0}
+            else:
+                {buf: cat(st.buf, ch), parts: st.parts, expr: True, depth: st.depth - 1}
+        else:
+            {buf: cat(st.buf, ch), parts: st.parts, expr: True, depth: st.depth}
+    else:
+        if ch == "{":
+            if st.buf == "":
+                {buf: "", parts: st.parts, expr: True, depth: 1}
+            else:
+                {buf: "", parts: [*st.parts, FLit(st.buf)], expr: True, depth: 1}
+        else:
+            {buf: cat(st.buf, ch), parts: st.parts, expr: False, depth: 0}
+
+def fstr_parts(s):
+    st = foldl(chars(s), {buf: "", parts: [], expr: False, depth: 0}, fstr_step)
+    if st.buf == "":
+        st.parts
+    else:
+        [*st.parts, FLit(st.buf)]
+
+def peek(ts: List[Tok], i: Int) -> Tok:
+    match ts[i]:
+        case Some(t):
+            t
+        case None:
+            mk("eof", "", 0, 0)
+
+def skip_nl(ts: List[Tok], i: Int) -> Int:
+    t = peek(ts, i)
+    if t.k == "nl":
+        skip_nl(ts, i + 1)
+    else:
+        i
+
+def expect(ts: List[Tok], i: Int, k: Text) -> Int:
+    t = peek(ts, i)
+    if t.k == k:
+        i + 1
+    else:
+        die(join(["expect ", k, " got ", t.k, " L", int_to_text(t.line)], ""))
+
+def skip_bal(ts: List[Tok], i: Int, op: Text, cl: Text, d: Int) -> Int:
+    t = peek(ts, i)
+    if t.k == "eof":
+        die("unbalanced")
+    elif t.k == op:
+        skip_bal(ts, i + 1, op, cl, d + 1)
+    elif t.k == cl:
+        if d == 1:
+            i + 1
+        else:
+            skip_bal(ts, i + 1, op, cl, d - 1)
+    else:
+        skip_bal(ts, i + 1, op, cl, d)
+
+def skip_atom_type(ts: List[Tok], i: Int) -> Int:
+    t = peek(ts, i)
+    if t.k == "lbrace":
+        j = skip_bal(ts, i + 1, "lbrace", "rbrace", 1)
+        n = peek(ts, j)
+        if n.k == "name" or n.k == "lparen" or n.k == "lbrace" or n.k == "lbrack":
+            skip_atom_type(ts, j)
+        else:
+            j
+    elif t.k == "lparen":
+        skip_atom_type(ts, skip_bal(ts, i + 1, "lparen", "rparen", 1))
+    elif t.k == "lbrack":
+        skip_atom_type(ts, skip_bal(ts, i + 1, "lbrack", "rbrack", 1))
+    elif t.k == "lt":
+        skip_atom_type(ts, skip_bal(ts, i + 1, "lt", "gt", 1))
+    elif t.k == "name" and t.v == "once":
+        skip_atom_type(ts, i + 1)
+    elif t.k == "name":
+        j = i + 1
+        n = peek(ts, j)
+        if n.k == "lbrack":
+            skip_atom_type(ts, skip_bal(ts, j + 1, "lbrack", "rbrack", 1))
+        else:
+            j
+    else:
+        i
+
+def skip_type(ts: List[Tok], i: Int) -> Int:
+    j = skip_atom_type(ts, i)
+    t = peek(ts, j)
+    if t.k == "arrow":
+        skip_type(ts, j + 1)
+    else:
+        j
+
+def skip_ann(ts: List[Tok], i: Int) -> Int:
+    t = peek(ts, i)
+    if t.k == "colon":
+        skip_type(ts, i + 1)
+    else:
+        i
+
+def skip_ret(ts: List[Tok], i: Int) -> Int:
+    t = peek(ts, i)
+    if t.k == "arrow":
+        skip_type(ts, i + 1)
+    else:
+        i
+
+def skip_until_nl(ts: List[Tok], i: Int) -> Int:
+    t = peek(ts, i)
+    if t.k == "nl" or t.k == "eof":
+        i
+    else:
+        skip_until_nl(ts, i + 1)
+
+def is_once_ann(ts, i):
+    t = peek(ts, i)
+    if t.k != "colon":
+        False
+    else:
+        n = peek(ts, i + 1)
+        n.k == "name" and n.v == "once"
+
+def ty_miss():
+    TMiss(0)
+
+def parse_ty_args(ts, i):
+    t = peek(ts, i)
+    if t.k == "rbrack":
+        {v: [], i: i}
+    else:
+        a = parse_type(ts, i)
+        n = peek(ts, a.i)
+        if n.k == "comma":
+            rest = parse_ty_args(ts, a.i + 1)
+            {v: [a.v, *rest.v], i: rest.i}
+        else:
+            {v: [a.v], i: a.i}
+
+def parse_ty_rec_fields(ts, i):
+    t = peek(ts, i)
+    if t.k == "rbrace":
+        {v: [], open: False, i: i}
+    elif t.k == "ellipsis":
+        j = i + 1
+        n = peek(ts, j)
+        j = if n.k == "name":
+            j + 1
+        else:
+            j
+        {v: [], open: True, i: j}
+    elif t.k == "name":
+        j = expect(ts, i + 1, "colon")
+        ty = parse_type(ts, j)
+        n = peek(ts, ty.i)
+        if n.k == "comma":
+            rest = parse_ty_rec_fields(ts, ty.i + 1)
+            {v: [{name: t.v, t: ty.v}, *rest.v], open: rest.open, i: rest.i}
+        else:
+            {v: [{name: t.v, t: ty.v}], open: False, i: ty.i}
+    else:
+        {v: [], open: False, i: i}
+
+def parse_ty_paren_list(ts, i):
+    a = parse_type(ts, i)
+    n = peek(ts, a.i)
+    if n.k == "comma":
+        rest = parse_ty_paren_list(ts, a.i + 1)
+        {v: [a.v, *rest.v], i: rest.i}
+    else:
+        {v: [a.v], i: a.i}
+
+def parse_ty_atom(ts, i):
+    t = peek(ts, i)
+    if t.k == "name" and t.v == "once":
+        parse_ty_atom(ts, i + 1)
+    elif t.k == "name":
+        j = i + 1
+        n = peek(ts, j)
+        if n.k == "lbrack":
+            args = parse_ty_args(ts, j + 1)
+            j2 = expect(ts, args.i, "rbrack")
+            if t.v == "List" and list_len(args.v) == 1:
+                {v: TList({a: nth(args.v, 0)}), i: j2}
+            elif t.v == "Maybe" and list_len(args.v) == 1:
+                {v: TMaybe({a: nth(args.v, 0)}), i: j2}
+            elif t.v == "Result" and list_len(args.v) == 2:
+                {v: TResult({a: nth(args.v, 0), e: nth(args.v, 1)}), i: j2}
+            else:
+                {v: TApp({f: t.v, args: args.v}), i: j2}
+        elif t.v == "Int":
+            {v: TInt(0), i: j}
+        elif t.v == "Bool":
+            {v: TBool(0), i: j}
+        elif t.v == "Text":
+            {v: TText(0), i: j}
+        elif t.v == "Never":
+            {v: TNever(0), i: j}
+        elif t.v == "List":
+            {v: TList({a: TMiss(0)}), i: j}
+        elif t.v == "Maybe":
+            {v: TMaybe({a: TMiss(0)}), i: j}
+        elif t.v == "Result":
+            {v: TResult({a: TMiss(0), e: TMiss(0)}), i: j}
+        elif t.v == "File":
+            {v: TName({s: "File"}), i: j}
+        else:
+            {v: TName({s: t.v}), i: j}
+    elif t.k == "lparen":
+        n = peek(ts, i + 1)
+        if n.k == "rparen":
+            {v: TUnit(0), i: i + 2}
+        else:
+            xs = parse_ty_paren_list(ts, i + 1)
+            j = expect(ts, xs.i, "rparen")
+            ar = peek(ts, j)
+            if ar.k == "arrow":
+                parse_ty_after_arrow(ts, j, xs.v)
+            elif list_len(xs.v) == 1:
+                {v: nth(xs.v, 0), i: j}
+            else:
+                {v: TFun({args: xs.v, ret: TMiss(0), eff: []}), i: j}
+    elif t.k == "lbrace":
+        fs = parse_ty_rec_fields(ts, i + 1)
+        j = expect(ts, fs.i, "rbrace")
+        {v: TRec({fs: fs.v, open: fs.open}), i: j}
+    elif t.k == "lt":
+        j = skip_bal(ts, i + 1, "lt", "gt", 1)
+        {v: TOpen({open: True}), i: j}
+    else:
+        {v: TMiss(0), i: i}
+
+def parse_ty_after_arrow(ts, i, args):
+    t2 = peek(ts, i + 1)
+    if t2.k == "lbrace":
+        t3 = peek(ts, i + 2)
+        t4 = peek(ts, i + 3)
+        if t3.k == "name" and t4.k == "colon":
+            r = parse_ty_atom(ts, i + 1)
+            {v: TFun({args: args, ret: r.v, eff: []}), i: r.i}
+        else:
+            ns = read_eff_names(ts, i + 2)
+            j = expect(ts, ns.i, "rbrace")
+            r = parse_type(ts, j)
+            {v: TFun({args: args, ret: r.v, eff: ns.v}), i: r.i}
+    else:
+        r = parse_type(ts, i + 1)
+        {v: TFun({args: args, ret: r.v, eff: []}), i: r.i}
+
+def parse_type(ts, i):
+    a = parse_ty_atom(ts, i)
+    t = peek(ts, a.i)
+    if t.k == "arrow":
+        parse_ty_after_arrow(ts, a.i, [a.v])
+    else:
+        a
+
+def parse_ret(ts, i):
+    t = peek(ts, i)
+    if t.k != "arrow":
+        {eff: [], ty: TMiss(0), i: i}
+    else:
+        t2 = peek(ts, i + 1)
+        if t2.k == "lbrace":
+            t3 = peek(ts, i + 2)
+            t4 = peek(ts, i + 3)
+            if t3.k == "name" and t4.k == "colon":
+                ty = parse_type(ts, i + 1)
+                {eff: [], ty: ty.v, i: ty.i}
+            else:
+                ns = read_eff_names(ts, i + 2)
+                j = expect(ts, ns.i, "rbrace")
+                ty = parse_type(ts, j)
+                {eff: ns.v, ty: ty.v, i: ty.i}
+        else:
+            ty = parse_type(ts, i + 1)
+            {eff: [], ty: ty.v, i: ty.i}
+
+def parse_param_ty(ts, i, once):
+    t = peek(ts, i)
+    if t.k != "colon":
+        {ty: TMiss(0), i: i}
+    else:
+        j = if once:
+            i + 2
+        else:
+            i + 1
+        r = parse_type(ts, j)
+        {ty: r.v, i: r.i}
+
+def parse_params(ts, i):
+    t = peek(ts, i)
+    if t.k == "rparen":
+        {v: [], pts: [], once_ps: [], i: i}
+    else:
+        if t.k != "name":
+            die("param")
+        once = is_once_ann(ts, i + 1)
+        ty = parse_param_ty(ts, i + 1, once)
+        n = peek(ts, ty.i)
+        if n.k == "comma":
+            rest = parse_params(ts, ty.i + 1)
+            ops = if once:
+                [t.v, *rest.once_ps]
+            else:
+                rest.once_ps
+            {v: [t.v, *rest.v], pts: [ty.ty, *rest.pts], once_ps: ops, i: rest.i}
+        else:
+            ops = if once:
+                [t.v]
+            else:
+                []
+            {v: [t.v], pts: [ty.ty], once_ps: ops, i: ty.i}
+
+def parse_block(ts, i):
+    i = expect(ts, i, "nl")
+    i = expect(ts, i, "indent")
+    r = parse_stmts(ts, i)
+    i = expect(ts, r.i, "dedent")
+    {v: r.v, i: i}
+
+def parse_stmts(ts, i):
+    t = peek(ts, i)
+    if t.k == "nl":
+        parse_stmts(ts, i + 1)
+    elif t.k == "dedent" or t.k == "eof":
+        {v: [], i: i}
+    else:
+        s = parse_stmt(ts, i)
+        rest = parse_stmts(ts, s.i)
+        {v: [s.v, *rest.v], i: rest.i}
+
+def parse_stmt(ts, i):
+    t = peek(ts, i)
+    if t.k == "total":
+        d = parse_def(ts, i + 1)
+        match d.v:
+            case DDef(w):
+                {v: DDef({name: w.name, ps: w.ps, pts: w.pts, body: w.body, eff: w.eff, tot: True, once_ps: w.once_ps, ret: w.ret, ln: w.ln, cl: w.cl, fl: w.fl, tcs: w.tcs}), i: d.i}
+            case _:
+                d
+    elif t.k == "def":
+        parse_def(ts, i)
+    elif t.k == "if":
+        e = parse_if(ts, i)
+        {v: DExp(e.v), i: skip_nl(ts, e.i)}
+    elif t.k == "match":
+        e = parse_match(ts, i)
+        {v: DExp(e.v), i: skip_nl(ts, e.i)}
+    elif t.k == "with":
+        e = parse_with(ts, i)
+        {v: DExp(e.v), i: skip_nl(ts, e.i)}
+    elif t.k == "handle":
+        e = parse_handle(ts, i)
+        {v: DExp(e.v), i: skip_nl(ts, e.i)}
+    elif t.k == "return":
+        n = peek(ts, i + 1)
+        if n.k == "nl" or n.k == "dedent" or n.k == "eof":
+            {v: DExp(NUnit(0)), i: skip_nl(ts, i + 1)}
+        else:
+            e = parse_expr(ts, i + 1)
+            {v: DExp(e.v), i: skip_nl(ts, e.i)}
+    elif t.k == "name" and peek(ts, i + 1).k == "eq":
+        e = parse_expr(ts, i + 2)
+        {v: DLet({name: t.v, e: e.v, ty: TMiss(0)}), i: skip_nl(ts, e.i)}
+    elif t.k == "name" and peek(ts, i + 1).k == "colon":
+        ty = parse_type(ts, i + 2)
+        j = expect(ts, ty.i, "eq")
+        e = parse_expr(ts, j)
+        {v: DLet({name: t.v, e: e.v, ty: ty.v}), i: skip_nl(ts, e.i)}
+    else:
+        e = parse_expr(ts, i)
+        {v: DExp(e.v), i: skip_nl(ts, e.i)}
+
+def parse_tparam_one(ts, i):
+    t = peek(ts, i)
+    if t.k != "name":
+        die("type param")
+    j = i + 1
+    n = peek(ts, j)
+    j2 = if n.k == "lbrack":
+        skip_bal(ts, j + 1, "lbrack", "rbrack", 1)
+    else:
+        j
+    n2 = peek(ts, j2)
+    if n2.k == "colon":
+        tr = peek(ts, j2 + 1)
+        if tr.k != "name":
+            die("trait bound")
+        j3 = j2 + 2
+        j4 = if peek(ts, j3).k == "lbrack":
+            skip_bal(ts, j3 + 1, "lbrack", "rbrack", 1)
+        else:
+            j3
+        {name: t.v, tr: tr.v, i: j4}
+    else:
+        {name: t.v, tr: "", i: j2}
+
+def parse_tparam_items(ts, i):
+    t = peek(ts, i)
+    if t.k == "rbrack":
+        {v: [], i: i + 1}
+    elif t.k == "name":
+        one = parse_tparam_one(ts, i)
+        n = peek(ts, one.i)
+        if n.k == "comma":
+            rest = parse_tparam_items(ts, one.i + 1)
+            {v: [{name: one.name, tr: one.tr}, *rest.v], i: rest.i}
+        else:
+            j = expect(ts, one.i, "rbrack")
+            {v: [{name: one.name, tr: one.tr}], i: j}
+    else:
+        j = expect(ts, i, "rbrack")
+        {v: [], i: j}
+
+def parse_def_tparams(ts, i):
+    t = peek(ts, i)
+    if t.k != "lbrack":
+        {v: [], i: i}
+    else:
+        parse_tparam_items(ts, i + 1)
+
+def parse_def(ts, i):
+    i = expect(ts, i, "def")
+    t = peek(ts, i)
+    if t.k != "name":
+        die("def name")
+    i = i + 1
+    tp = parse_def_tparams(ts, i)
+    i = expect(ts, tp.i, "lparen")
+    ps = parse_params(ts, i)
+    i = expect(ts, ps.i, "rparen")
+    rt = parse_ret(ts, i)
+    i = expect(ts, rt.i, "colon")
+    b = parse_block(ts, i)
+    {v: DDef({name: t.v, ps: ps.v, pts: ps.pts, body: b.v, eff: rt.eff, tot: False, once_ps: ps.once_ps, ret: rt.ty, ln: t.line, cl: t.col, fl: t.file, tcs: tp.v}), i: b.i}
+
+def read_eff_names(ts, i):
+    t = peek(ts, i)
+    if t.k == "rbrace":
+        {v: [], i: i}
+    elif t.k == "name":
+        j0 = i + 1
+        j = if peek(ts, j0).k == "lbrack":
+            skip_bal(ts, j0 + 1, "lbrack", "rbrack", 1)
+        else:
+            j0
+        n = peek(ts, j)
+        if n.k == "comma":
+            rest = read_eff_names(ts, j + 1)
+            {v: [t.v, *rest.v], i: rest.i}
+        else:
+            {v: [t.v], i: j}
+    else:
+        {v: [], i: i}
+
+def read_eff(ts, i):
+    t = peek(ts, i)
+    if t.k != "arrow":
+        {v: [], i: i}
+    else:
+        t2 = peek(ts, i + 1)
+        if t2.k == "lbrace":
+            t3 = peek(ts, i + 2)
+            t4 = peek(ts, i + 3)
+            if t3.k == "name" and t4.k == "colon":
+                {v: [], i: i}
+            else:
+                ns = read_eff_names(ts, i + 2)
+                {v: ns.v, i: i}
+        else:
+            {v: [], i: i}
+
+def err(t, msg):
+    die(join([t.file, ":", int_to_text(t.line), ":", int_to_text(t.col), ": ", msg], ""))
+
+def parse_if(ts, i):
+    kw = peek(ts, i).k
+    i = i + 1
+    t = peek(ts, i)
+    if t.k == "lparen":
+        j = skip_bal(ts, i + 1, "lparen", "rparen", 1)
+        n = peek(ts, j)
+        if n.k == "colon":
+            err(t, "條件不要括號")
+    c = parse_expr(ts, i)
+    i = expect(ts, c.i, "colon")
+    th = parse_block(ts, i)
+    n = peek(ts, th.i)
+    if n.k == "elif":
+        inner = parse_if(ts, th.i)
+        {v: NIf({cond: c.v, then: th.v, else_: [DExp(inner.v)], has: True}), i: inner.i}
+    elif n.k == "else":
+        i = expect(ts, th.i + 1, "colon")
+        el = parse_block(ts, i)
+        {v: NIf({cond: c.v, then: th.v, else_: el.v, has: True}), i: el.i}
+    else:
+        {v: NIf({cond: c.v, then: th.v, else_: [], has: False}), i: th.i}
+
+def parse_match(ts, i):
+    t = peek(ts, i)
+    i = expect(ts, i, "match")
+    e = parse_expr(ts, i)
+    i = expect(ts, e.i, "colon")
+    i = expect(ts, i, "nl")
+    i = expect(ts, i, "indent")
+    cs = parse_cases(ts, i)
+    i = expect(ts, cs.i, "dedent")
+    {v: NMatch({e: e.v, cases: cs.v, ln: t.line, cl: t.col, fl: t.file}), i: i}
+
+def parse_cases(ts, i):
+    t = peek(ts, i)
+    if t.k == "nl":
+        parse_cases(ts, i + 1)
+    elif t.k == "case":
+        c = parse_case(ts, i)
+        rest = parse_cases(ts, c.i)
+        {v: [c.v, *rest.v], i: rest.i}
+    else:
+        {v: [], i: i}
+
+def parse_case(ts, i):
+    i = expect(ts, i, "case")
+    p = parse_pat(ts, i)
+    i = expect(ts, p.i, "colon")
+    b = parse_block(ts, i)
+    {v: KCase({pat: p.v, body: b.v}), i: b.i}
+
+def parse_pat(ts, i):
+    t = peek(ts, i)
+    if t.k == "hole" or (t.k == "name" and t.v == "_"):
+        {v: QWild(0), i: i + 1}
+    elif t.k == "int":
+        {v: QInt(t.n), i: i + 1}
+    elif t.k == "str":
+        {v: QText(t.v), i: i + 1}
+    elif t.k == "lbrack":
+        parse_plist(ts, i + 1)
+    elif t.k == "name":
+        n = peek(ts, i + 1)
+        if n.k == "lparen":
+            a = parse_pat(ts, i + 2)
+            j = expect(ts, a.i, "rparen")
+            {v: QCtor({name: t.v, has: True, arg: a.v}), i: j}
+        elif is_ctor_name(t.v) or t.v == "None" or t.v == "True" or t.v == "False":
+            if t.v == "True":
+                {v: QInt(1), i: i + 1}
+            elif t.v == "False":
+                {v: QInt(0), i: i + 1}
+            else:
+                {v: QCtor({name: t.v, has: False, arg: QWild(0)}), i: i + 1}
+        else:
+            {v: QVar(t.v), i: i + 1}
+    else:
+        die(cat("pat ", t.k))
+
+def parse_plist(ts, i):
+    t = peek(ts, i)
+    if t.k == "rbrack":
+        {v: QList({items: [], has: False, rest: ""}), i: i + 1}
+    elif t.k == "star":
+        n = peek(ts, i + 1)
+        j = expect(ts, i + 2, "rbrack")
+        {v: QList({items: [], has: True, rest: n.v}), i: j}
+    else:
+        p = parse_pat(ts, i)
+        n = peek(ts, p.i)
+        if n.k == "comma":
+            rest = parse_plist(ts, p.i + 1)
+            match rest.v:
+                case QList(w):
+                    {v: QList({items: [p.v, *w.items], has: w.has, rest: w.rest}), i: rest.i}
+                case _:
+                    die("plist")
+        elif n.k == "rbrack":
+            {v: QList({items: [p.v], has: False, rest: ""}), i: p.i + 1}
+        else:
+            die("plist")
+
+def parse_expr(ts, i):
+    parse_pipe(ts, i)
+
+def parse_pipe(ts, i):
+    l = parse_or(ts, i)
+    parse_pipe_rest(ts, l)
+
+def parse_pipe_rest(ts, l):
+    t = peek(ts, l.i)
+    if t.k == "pipe":
+        r = parse_post(ts, l.i + 1)
+        match r.v:
+            case NCall(w):
+                parse_pipe_rest(ts, {v: NCall({fun: w.fun, args: [l.v, *w.args], ln: w.ln, cl: w.cl, fl: w.fl}), i: r.i})
+            case _:
+                die("pipe")
+    else:
+        l
+
+def parse_or(ts, i):
+    l = parse_and(ts, i)
+    parse_or_rest(ts, l)
+
+def parse_or_rest(ts, l):
+    t = peek(ts, l.i)
+    if t.k == "or":
+        r = parse_and(ts, l.i + 1)
+        parse_or_rest(ts, {v: NBin({op: "or", l: l.v, r: r.v}), i: r.i})
+    else:
+        l
+
+def parse_and(ts, i):
+    l = parse_not(ts, i)
+    parse_and_rest(ts, l)
+
+def parse_and_rest(ts, l):
+    t = peek(ts, l.i)
+    if t.k == "and":
+        r = parse_not(ts, l.i + 1)
+        parse_and_rest(ts, {v: NBin({op: "and", l: l.v, r: r.v}), i: r.i})
+    else:
+        l
+
+def parse_not(ts, i):
+    t = peek(ts, i)
+    if t.k == "not":
+        e = parse_not(ts, i + 1)
+        {v: NUn({op: "not", e: e.v}), i: e.i}
+    else:
+        parse_cmp(ts, i)
+
+def parse_cmp(ts, i):
+    l = parse_add(ts, i)
+    t = peek(ts, l.i)
+    if t.k == "eqeq" or t.k == "ne" or t.k == "lt" or t.k == "gt" or t.k == "le" or t.k == "ge":
+        r = parse_add(ts, l.i + 1)
+        op = t.v
+        {v: NBin({op: op, l: l.v, r: r.v}), i: r.i}
+    else:
+        l
+
+def parse_add(ts, i):
+    l = parse_mul(ts, i)
+    parse_add_rest(ts, l)
+
+def parse_add_rest(ts, l):
+    t = peek(ts, l.i)
+    if t.k == "plus" or t.k == "minus":
+        r = parse_mul(ts, l.i + 1)
+        op = t.v
+        parse_add_rest(ts, {v: NBin({op: op, l: l.v, r: r.v}), i: r.i})
+    else:
+        l
+
+def parse_mul(ts, i):
+    l = parse_un(ts, i)
+    parse_mul_rest(ts, l)
+
+def parse_mul_rest(ts, l):
+    t = peek(ts, l.i)
+    if t.k == "star" or t.k == "slash":
+        r = parse_un(ts, l.i + 1)
+        op = t.v
+        parse_mul_rest(ts, {v: NBin({op: op, l: l.v, r: r.v}), i: r.i})
+    else:
+        l
+
+def parse_un(ts, i):
+    t = peek(ts, i)
+    if t.k == "minus":
+        e = parse_un(ts, i + 1)
+        {v: NUn({op: "-", e: e.v}), i: e.i}
+    else:
+        parse_post(ts, i)
+
+def parse_post(ts, i):
+    a = parse_atom(ts, i)
+    parse_post_rest(ts, a)
+
+def reject_method(fun, t):
+    match fun:
+        case NField(f):
+            match f.obj:
+                case NVar(s):
+                    0
+                case _:
+                    err(t, ". 不是方法，請用 |>")
+        case _:
+            0
+
+def parse_post_rest(ts, a):
+    t = peek(ts, a.i)
+    if t.k == "lparen":
+        reject_method(a.v, t)
+        args = parse_args(ts, a.i + 1)
+        i = expect(ts, args.i, "rparen")
+        parse_post_rest(ts, {v: NCall({fun: a.v, args: args.v, ln: t.line, cl: t.col, fl: t.file}), i: i})
+    elif t.k == "dot":
+        n = peek(ts, a.i + 1)
+        parse_post_rest(ts, {v: NField({obj: a.v, name: n.v}), i: a.i + 2})
+    elif t.k == "lbrack":
+        x = parse_expr(ts, a.i + 1)
+        n = peek(ts, x.i)
+        if n.k == "colon":
+            y = parse_expr(ts, x.i + 1)
+            i = expect(ts, y.i, "rbrack")
+            parse_post_rest(ts, {v: NIdx({obj: a.v, i: x.v, has: True, end: y.v}), i: i})
+        else:
+            i = expect(ts, x.i, "rbrack")
+            parse_post_rest(ts, {v: NIdx({obj: a.v, i: x.v, has: False, end: NUnit(0)}), i: i})
+    else:
+        a
+
+def parse_args(ts, i):
+    t = peek(ts, i)
+    if t.k == "rparen":
+        {v: [], i: i}
+    else:
+        e = parse_expr(ts, i)
+        n = peek(ts, e.i)
+        if n.k == "comma":
+            rest = parse_args(ts, e.i + 1)
+            {v: [e.v, *rest.v], i: rest.i}
+        else:
+            {v: [e.v], i: e.i}
+
+def parse_atom(ts, i):
+    t = peek(ts, i)
+    if t.k == "int":
+        {v: NInt(t.n), i: i + 1}
+    elif t.k == "str":
+        {v: NText(t.v), i: i + 1}
+    elif t.k == "name" and t.v == "True":
+        {v: NBool(True), i: i + 1}
+    elif t.k == "name" and t.v == "False":
+        {v: NBool(False), i: i + 1}
+    elif t.k == "name" and t.v == "None":
+        {v: NVar("None"), i: i + 1}
+    elif t.k == "hole":
+        {v: NHole(0), i: i + 1}
+    elif t.k == "fstr":
+        {v: NFstr(fstr_parts(t.v)), i: i + 1}
+    elif t.k == "name":
+        {v: NVar(t.v), i: i + 1}
+    elif t.k == "lparen":
+        n = peek(ts, i + 1)
+        if n.k == "rparen":
+            {v: NUnit(0), i: i + 2}
+        else:
+            e = parse_expr(ts, i + 1)
+            j = expect(ts, e.i, "rparen")
+            {v: e.v, i: j}
+    elif t.k == "lbrack":
+        parse_list(ts, i + 1)
+    elif t.k == "lbrace":
+        parse_record(ts, i + 1)
+    elif t.k == "fn":
+        parse_fn(ts, i)
+    elif t.k == "if":
+        parse_if(ts, i)
+    elif t.k == "match":
+        parse_match(ts, i)
+    elif t.k == "update":
+        parse_update(ts, i)
+    elif t.k == "handle":
+        parse_handle(ts, i)
+    elif t.k == "with":
+        parse_with(ts, i)
+    else:
+        die(join(["atom ", t.k, " L", int_to_text(t.line)], ""))
+
+def parse_fn(ts, i):
+    i = expect(ts, i, "fn")
+    i = expect(ts, i, "lparen")
+    ps = parse_params(ts, i)
+    i = expect(ts, ps.i, "rparen")
+    i = expect(ts, i, "colon")
+    if peek(ts, i).k == "nl":
+        b = parse_block(ts, i)
+        {v: NFn({ps: ps.v, pts: ps.pts, body: NBlk(b.v)}), i: b.i}
+    else:
+        e = parse_expr(ts, i)
+        {v: NFn({ps: ps.v, pts: ps.pts, body: e.v}), i: e.i}
+
+def parse_update(ts, i):
+    i = expect(ts, i, "update")
+    obj = parse_post(ts, i)
+    i = expect(ts, obj.i, "colon")
+    i = expect(ts, i, "nl")
+    i = expect(ts, i, "indent")
+    ps = parse_patches(ts, i)
+    i = expect(ts, ps.i, "dedent")
+    {v: NUpd({obj: obj.v, patches: ps.v}), i: i}
+
+def parse_patches(ts, i):
+    t = peek(ts, i)
+    if t.k == "nl":
+        parse_patches(ts, i + 1)
+    elif t.k == "name":
+        i = expect(ts, i + 1, "eq")
+        e = parse_expr(ts, i)
+        rest = parse_patches(ts, skip_nl(ts, e.i))
+        {v: [NKV({name: t.v, e: e.v}), *rest.v], i: rest.i}
+    else:
+        {v: [], i: i}
+
+def parse_handle(ts, i):
+    i = expect(ts, i, "handle")
+    e = parse_expr(ts, i)
+    i = expect(ts, e.i, "with")
+    i = expect(ts, i, "colon")
+    i = expect(ts, i, "nl")
+    i = expect(ts, i, "indent")
+    hs = parse_handlers(ts, i)
+    i = expect(ts, hs.i, "dedent")
+    {v: NHandle({e: e.v, hs: hs.v}), i: i}
+
+def parse_handlers(ts, i):
+    t = peek(ts, i)
+    if t.k == "nl":
+        parse_handlers(ts, i + 1)
+    elif t.k == "name" and peek(ts, i + 1).k == "eq":
+        e = parse_expr(ts, i + 2)
+        rest = parse_handlers(ts, skip_nl(ts, e.i))
+        {v: [NKV({name: t.v, e: e.v}), *rest.v], i: rest.i}
+    else:
+        {v: [], i: i}
+
+def parse_with(ts, i):
+    i = expect(ts, i, "with")
+    setup = parse_expr(ts, i)
+    i = expect(ts, setup.i, "as")
+    v = peek(ts, i)
+    if v.k != "name":
+        die("with as")
+    i = expect(ts, i + 1, "colon")
+    b = parse_block(ts, i)
+    {v: NWith({setup: setup.v, var: v.v, body: b.v}), i: b.i}
+
+def parse_comp_rest(ts, e, i):
+    t = peek(ts, i)
+    i = expect(ts, i, "for")
+    x = peek(ts, i)
+    if x.k != "name":
+        die("comp var")
+    i = i + 1
+    i = expect(ts, i, "in")
+    xs = parse_expr(ts, i)
+    n = peek(ts, xs.i)
+    if n.k == "if":
+        p = parse_expr(ts, xs.i + 1)
+        j = expect(ts, p.i, "rbrack")
+        {v: NComp({e: e, var: x.v, xs: xs.v, pred: p.v, has: True, ln: t.line, cl: t.col, fl: t.file}), i: j}
+    else:
+        j = expect(ts, xs.i, "rbrack")
+        {v: NComp({e: e, var: x.v, xs: xs.v, pred: NUnit(0), has: False, ln: t.line, cl: t.col, fl: t.file}), i: j}
+
+def parse_list(ts, i):
+    t = peek(ts, i)
+    if t.k == "rbrack":
+        {v: NList([]), i: i + 1}
+    elif t.k == "star":
+        items = parse_list_items(ts, i)
+        {v: NList(items.v), i: items.i}
+    else:
+        e = parse_expr(ts, i)
+        n = peek(ts, e.i)
+        if n.k == "for":
+            parse_comp_rest(ts, e.v, e.i)
+        else:
+            rest = parse_list_more(ts, e.i)
+            {v: NList([e.v, *rest.v]), i: rest.i}
+
+def parse_list_items(ts, i):
+    t = peek(ts, i)
+    if t.k == "rbrack":
+        {v: [], i: i + 1}
+    elif t.k == "star":
+        e = parse_expr(ts, i + 1)
+        rest = parse_list_more(ts, e.i)
+        {v: [NSpread(e.v), *rest.v], i: rest.i}
+    else:
+        e = parse_expr(ts, i)
+        rest = parse_list_more(ts, e.i)
+        {v: [e.v, *rest.v], i: rest.i}
+
+def parse_list_more(ts, i):
+    t = peek(ts, i)
+    if t.k == "comma":
+        n = peek(ts, i + 1)
+        if n.k == "rbrack":
+            {v: [], i: i + 2}
+        else:
+            parse_list_items(ts, i + 1)
+    elif t.k == "rbrack":
+        {v: [], i: i + 1}
+    else:
+        die("list")
+
+def parse_record(ts, i):
+    t = peek(ts, i)
+    if t.k == "rbrace":
+        {v: NRec({fields: [], has: False, sp: NUnit(0)}), i: i + 1}
+    elif t.k == "name" and peek(ts, i + 1).k == "ellipsis":
+        sp = NVar(t.v)
+        n = peek(ts, i + 2)
+        if n.k == "comma":
+            rest = parse_record(ts, i + 3)
+            match rest.v:
+                case NRec(w):
+                    {v: NRec({fields: w.fields, has: True, sp: sp}), i: rest.i}
+                case _:
+                    die("record")
+        elif n.k == "rbrace":
+            {v: NRec({fields: [], has: True, sp: sp}), i: i + 3}
+        else:
+            die("record")
+    elif t.k == "name":
+        i = expect(ts, i + 1, "colon")
+        e = parse_expr(ts, i)
+        n = peek(ts, e.i)
+        if n.k == "comma":
+            rest = parse_record(ts, e.i + 1)
+            match rest.v:
+                case NRec(w):
+                    {v: NRec({fields: [NKV({name: t.v, e: e.v}), *w.fields], has: w.has, sp: w.sp}), i: rest.i}
+                case _:
+                    die("record")
+        elif n.k == "rbrace":
+            {v: NRec({fields: [NKV({name: t.v, e: e.v})], has: False, sp: NUnit(0)}), i: e.i + 1}
+        else:
+            die("record field")
+    else:
+        die("record")
+
+def skip_indent_block(ts, i):
+    t = peek(ts, i)
+    if t.k == "indent":
+        skip_indent_block_d(ts, i + 1, 1)
+    else:
+        i
+
+def skip_indent_block_d(ts, i, d):
+    t = peek(ts, i)
+    if d == 0 or t.k == "eof":
+        i
+    elif t.k == "indent":
+        skip_indent_block_d(ts, i + 1, d + 1)
+    elif t.k == "dedent":
+        skip_indent_block_d(ts, i + 1, d - 1)
+    else:
+        skip_indent_block_d(ts, i + 1, d)
+
+def skip_decl(ts, i):
+    t = peek(ts, i)
+    if t.k == "nl":
+        skip_indent_block(ts, i + 1)
+    elif t.k == "colon":
+        skip_decl(ts, i + 1)
+    elif t.k == "eof" or t.k == "dedent":
+        i
+    else:
+        skip_decl(ts, i + 1)
+
+def parse_ty_params(ts, i):
+    t = peek(ts, i)
+    if t.k != "lbrack":
+        {v: [], i: i}
+    else:
+        parse_ty_param_names(ts, i + 1)
+
+def parse_ty_param_names(ts, i):
+    t = peek(ts, i)
+    if t.k == "rbrack":
+        {v: [], i: i + 1}
+    elif t.k == "name":
+        n = peek(ts, i + 1)
+        if n.k == "comma":
+            rest = parse_ty_param_names(ts, i + 2)
+            {v: [t.v, *rest.v], i: rest.i}
+        else:
+            j = expect(ts, i + 1, "rbrack")
+            {v: [t.v], i: j}
+    else:
+        j = expect(ts, i, "rbrack")
+        {v: [], i: j}
+
+def parse_ctor_ty_args(ts, i):
+    t = peek(ts, i)
+    if t.k != "lparen":
+        {v: [], i: i}
+    else:
+        xs = parse_ty_args(ts, i + 1)
+        j = expect(ts, xs.i, "rparen")
+        {v: xs.v, i: j}
+
+def parse_adt_ctors(ts, i):
+    t = peek(ts, i)
+    if t.k == "nl":
+        parse_adt_ctors(ts, i + 1)
+    elif t.k == "name":
+        args = parse_ctor_ty_args(ts, i + 1)
+        rest = parse_adt_ctors(ts, skip_nl(ts, args.i))
+        {v: [{name: t.v, args: args.v}, *rest.v], i: rest.i}
+    else:
+        {v: [], i: i}
+
+def parse_type_decl(ts, i):
+    i = expect(ts, i, "type")
+    t = peek(ts, i)
+    if t.k != "name":
+        die("type name")
+    ps = parse_ty_params(ts, i + 1)
+    n = peek(ts, ps.i)
+    if n.k == "eq":
+        ty = parse_type(ts, ps.i + 1)
+        {v: DType({name: t.v, params: ps.v, kind: "alias", ty: ty.v, ctors: []}), i: skip_nl(ts, ty.i)}
+    elif n.k == "colon":
+        j = skip_nl(ts, ps.i + 1)
+        if peek(ts, j).k == "indent":
+            cs = parse_adt_ctors(ts, j + 1)
+            j2 = expect(ts, cs.i, "dedent")
+            {v: DType({name: t.v, params: ps.v, kind: "adt", ty: TMiss(0), ctors: cs.v}), i: j2}
+        else:
+            {v: DType({name: t.v, params: ps.v, kind: "adt", ty: TMiss(0), ctors: []}), i: j}
+    else:
+        {v: DType({name: t.v, params: ps.v, kind: "alias", ty: TMiss(0), ctors: []}), i: skip_nl(ts, ps.i)}
+
+def parse_trait_k(ts, i):
+    t = peek(ts, i)
+    if t.k != "lbrack":
+        {k: 0, i: i}
+    else:
+        n = peek(ts, i + 1)
+        n2 = peek(ts, i + 2)
+        n3 = peek(ts, i + 3)
+        n4 = peek(ts, i + 4)
+        k = if n.k == "name" and n2.k == "lbrack" and n3.k == "hole" and n4.k == "rbrack":
+            1
+        else:
+            0
+        {k: k, i: skip_bal(ts, i + 1, "lbrack", "rbrack", 1)}
+
+def parse_trait(ts, i):
+    i = expect(ts, i, "trait")
+    t = peek(ts, i)
+    if t.k != "name":
+        die("trait name")
+    i = i + 1
+    pk = parse_trait_k(ts, i)
+    i = expect(ts, pk.i, "colon")
+    i = skip_nl(ts, i)
+    i = expect(ts, i, "indent")
+    i = skip_indent_block_d(ts, i, 1)
+    {v: DTrait({name: t.v, k: pk.k}), i: i}
+
+def impl_fun_name(tr, ty, meth):
+    cat3("_", tr, cat3("_", ty, cat("_", meth)))
+
+def parse_impl_ty(ts, i):
+    t = peek(ts, i)
+    if t.k != "lbrack":
+        {ty: "", applied: False, i: i}
+    else:
+        n = peek(ts, i + 1)
+        if n.k != "name":
+            {ty: "", applied: False, i: skip_bal(ts, i + 1, "lbrack", "rbrack", 1)}
+        else:
+            n2 = peek(ts, i + 2)
+            if n2.k == "lbrack":
+                {ty: n.v, applied: True, i: skip_bal(ts, i + 1, "lbrack", "rbrack", 1)}
+            else:
+                {ty: n.v, applied: False, i: skip_bal(ts, i + 1, "lbrack", "rbrack", 1)}
+
+def mk_prog(v, i, imps, pubs):
+    {v: v, i: i, imps: imps, pubs: pubs}
+
+def decl_pub_name(s):
+    match s:
+        case DDef(w):
+            w.name
+        case DType(w):
+            w.name
+        case DTrait(w):
+            w.name
+        case DLet(w):
+            w.name
+        case _:
+            ""
+
+def parse_pub_then(ts, i):
+    i = skip_nl(ts, i)
+    t = peek(ts, i)
+    if t.k == "def":
+        d = parse_def(ts, i)
+        rest = parse_program(ts, d.i)
+        mk_prog([d.v, *rest.v], rest.i, rest.imps, [decl_pub_name(d.v), *rest.pubs])
+    elif t.k == "total":
+        d = parse_def(ts, i + 1)
+        rest = parse_program(ts, d.i)
+        match d.v:
+            case DDef(w):
+                mk_prog([DDef({name: w.name, ps: w.ps, pts: w.pts, body: w.body, eff: w.eff, tot: True, once_ps: w.once_ps, ret: w.ret, ln: w.ln, cl: w.cl, fl: w.fl, tcs: w.tcs}), *rest.v], rest.i, rest.imps, [w.name, *rest.pubs])
+            case _:
+                rest
+    elif t.k == "type":
+        td = parse_type_decl(ts, i)
+        rest = parse_program(ts, td.i)
+        mk_prog([td.v, *rest.v], rest.i, rest.imps, [decl_pub_name(td.v), *rest.pubs])
+    elif t.k == "trait":
+        td = parse_trait(ts, i)
+        rest = parse_program(ts, td.i)
+        mk_prog([td.v, *rest.v], rest.i, rest.imps, [decl_pub_name(td.v), *rest.pubs])
+    else:
+        die("pub")
+
+def parse_program(ts, i):
+    i = skip_nl(ts, i)
+    t = peek(ts, i)
+    if t.k == "eof":
+        mk_prog([], i, [], [])
+    elif t.k == "type":
+        td = parse_type_decl(ts, i)
+        rest = parse_program(ts, td.i)
+        mk_prog([td.v, *rest.v], rest.i, rest.imps, rest.pubs)
+    elif t.k == "from":
+        m = peek(ts, i + 1)
+        rest = parse_program(ts, skip_until_nl(ts, i))
+        mk_prog(rest.v, rest.i, [m.v, *rest.imps], rest.pubs)
+    elif t.k == "import":
+        m = peek(ts, i + 1)
+        rest = parse_program(ts, skip_until_nl(ts, i))
+        mk_prog(rest.v, rest.i, [m.v, *rest.imps], rest.pubs)
+    elif t.k == "pub":
+        parse_pub_then(ts, i + 1)
+    elif t.k == "effect":
+        parse_program(ts, skip_decl(ts, i))
+    elif t.k == "trait":
+        td = parse_trait(ts, i)
+        rest = parse_program(ts, td.i)
+        mk_prog([td.v, *rest.v], rest.i, rest.imps, rest.pubs)
+    elif t.k == "impl":
+        im = parse_impl(ts, i)
+        rest = parse_program(ts, im.i)
+        mk_prog([*im.v, *rest.v], rest.i, rest.imps, rest.pubs)
+    elif t.k == "total":
+        d = parse_def(ts, i + 1)
+        rest = parse_program(ts, d.i)
+        match d.v:
+            case DDef(w):
+                mk_prog([DDef({name: w.name, ps: w.ps, pts: w.pts, body: w.body, eff: w.eff, tot: True, once_ps: w.once_ps, ret: w.ret, ln: w.ln, cl: w.cl, fl: w.fl, tcs: w.tcs}), *rest.v], rest.i, rest.imps, rest.pubs)
+            case _:
+                rest
+    elif t.k == "def":
+        d = parse_def(ts, i)
+        rest = parse_program(ts, d.i)
+        mk_prog([d.v, *rest.v], rest.i, rest.imps, rest.pubs)
+    elif t.k == "name":
+        s = parse_stmt(ts, i)
+        rest = parse_program(ts, s.i)
+        mk_prog([s.v, *rest.v], rest.i, rest.imps, rest.pubs)
+    elif t.k == "int" or t.k == "str" or t.k == "lparen" or t.k == "lbrack" or t.k == "lbrace" or t.k == "fn" or t.k == "if" or t.k == "match" or t.k == "not" or t.k == "minus" or t.k == "fstr" or t.k == "hole":
+        s = parse_stmt(ts, i)
+        rest = parse_program(ts, s.i)
+        mk_prog([s.v, *rest.v], rest.i, rest.imps, rest.pubs)
+    else:
+        die(cat3("top ", t.k, cat(" L", int_to_text(t.line))))
+
+def parse_impl(ts, i):
+    i = expect(ts, i, "impl")
+    t0 = peek(ts, i)
+    i = if t0.k == "name" and t0.v == "orphan":
+        i + 1
+    else:
+        i
+    t = peek(ts, i)
+    if t.k != "name":
+        die("impl")
+    i = i + 1
+    ty = parse_impl_ty(ts, i)
+    i = expect(ts, ty.i, "colon")
+    i = expect(ts, i, "nl")
+    i = expect(ts, i, "indent")
+    ms = parse_impl_meths(ts, i, t.v, ty.ty)
+    i = expect(ts, ms.i, "dedent")
+    mark = DImpl({tr: t.v, ty: ty.ty, applied: ty.applied})
+    {v: [mark, *ms.defs], i: i}
+
+def parse_impl_meths(ts, i, trn, tyn):
+    t = peek(ts, i)
+    if t.k == "nl":
+        parse_impl_meths(ts, i + 1, trn, tyn)
+    elif t.k == "def":
+        d = parse_def(ts, i)
+        rest = parse_impl_meths(ts, d.i, trn, tyn)
+        match d.v:
+            case DDef(w):
+                nm = impl_fun_name(trn, tyn, w.name)
+                {defs: [DDef({name: nm, ps: w.ps, pts: w.pts, body: w.body, eff: w.eff, tot: w.tot, once_ps: w.once_ps, ret: w.ret, ln: w.ln, cl: w.cl, fl: w.fl, tcs: w.tcs}), *rest.defs], i: rest.i}
+            case _:
+                rest
+    else:
+        {defs: [], i: i}

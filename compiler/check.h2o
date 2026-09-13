@@ -1,0 +1,533 @@
+# h2oc check — 兩遍：先收集 def 頭，再檢查本體。BH 子集。
+# 效應列／窮盡／total 結構化遞迴／once 移動（別名／欄位／with 仿射）。HM 在 type.h2o。
+import type
+
+def has_lab(xs, lab):
+    any(xs, fn(x): x == lab)
+
+def need_lab(eff, lab, w):
+    if has_lab(eff, lab):
+        0
+    else:
+        err({k: "", v: "", n: 0, line: w.ln, col: w.cl, file: w.fl}, cat3("這裡不能用 ", lab, cat3("（函數沒有宣告 {", lab, "}）")))
+
+def call_lab(w):
+    match w.fun:
+        case NField(f):
+            match f.obj:
+                case NVar(s):
+                    if s == "State" and (f.name == "get" or f.name == "put"):
+                        "State"
+                    elif s == "Except" and f.name == "throw":
+                        "Except"
+                    elif s == "io" and (f.name == "read_file" or f.name == "write_file" or f.name == "println" or f.name == "open"):
+                        "IO"
+                    else:
+                        ""
+                case _:
+                    ""
+        case NVar(s):
+            if s == "println" or s == "argv" or s == "eprint" or s == "exit" or s == "write_out":
+                "IO"
+            else:
+                ""
+        case _:
+            ""
+
+def ctor_names(cases):
+    foldl(cases, [], ctor_acc)
+
+def ctor_acc(acc, c):
+    match c:
+        case KCase(w):
+            match w.pat:
+                case QCtor(p):
+                    [*acc, p.name]
+                case QWild(z):
+                    [*acc, "_"]
+                case _:
+                    acc
+        case _:
+            acc
+
+def check_match(w):
+    ns = ctor_names(w.cases)
+    if has_lab(ns, "_"):
+        0
+    elif has_lab(ns, "Some") and not has_lab(ns, "None"):
+        err({k: "", v: "", n: 0, line: w.ln, col: w.cl, file: w.fl}, "match 沒有涵蓋 None")
+    elif has_lab(ns, "None") and not has_lab(ns, "Some"):
+        err({k: "", v: "", n: 0, line: w.ln, col: w.cl, file: w.fl}, "match 沒有涵蓋 Some")
+    elif has_lab(ns, "Ok") and not has_lab(ns, "Err"):
+        err({k: "", v: "", n: 0, line: w.ln, col: w.cl, file: w.fl}, "match 沒有涵蓋 Err")
+    elif has_lab(ns, "Err") and not has_lab(ns, "Ok"):
+        err({k: "", v: "", n: 0, line: w.ln, col: w.cl, file: w.fl}, "match 沒有涵蓋 Ok")
+    else:
+        0
+
+def names_acc(acc, s):
+    match s:
+        case DDef(w):
+            [*acc, w.name]
+        case _:
+            acc
+
+def def_names(ss):
+    foldl(ss, [], names_acc)
+
+def once_has(xs, s):
+    any(xs, fn(x): x == s)
+
+def once_drop_one(s):
+    fn(acc, x):
+        if x == s:
+            acc
+        else:
+            [*acc, x]
+
+def once_drop(xs, s):
+    foldl(xs, [], once_drop_one(s))
+
+def once_add(xs, s):
+    if once_has(xs, s):
+        xs
+    else:
+        [s, *xs]
+
+def once_union_one(acc, s):
+    once_add(acc, s)
+
+def once_union(xs, ys):
+    foldl(ys, xs, once_union_one)
+
+def once_keep_both(other):
+    fn(acc, s):
+        if once_has(other, s):
+            [*acc, s]
+        else:
+            acc
+
+def once_is(st, s):
+    once_has(st.live, s) or once_has(st.dead, s)
+
+def once_st(live, dead, lin, at):
+    {live: live, dead: dead, lin: lin, at: at}
+
+def once_mk(ps, at):
+    once_st(ps, [], ps, at)
+
+def once_consume(st, s):
+    if once_has(st.live, s):
+        once_st(once_drop(st.live, s), once_add(st.dead, s), st.lin, st.at)
+    elif once_has(st.dead, s):
+        err(st.at, cat3(s, " 標了 once，不能用兩次", ""))
+        st
+    else:
+        st
+
+def once_bind(st, new, src):
+    lin2 = if once_has(st.lin, src):
+        once_add(st.lin, new)
+    else:
+        st.lin
+    once_st(once_add(st.live, new), st.dead, lin2, st.at)
+
+def once_join_lin_fn(a, b):
+    fn(z, s):
+        la = once_has(a.live, s)
+        lb = once_has(b.live, s)
+        if la == lb:
+            0
+        else:
+            err(a.at, cat3(s, " 標了 once，沒有用到（會漏關）", ""))
+
+def once_join(a, b, base):
+    live = foldl(a.live, [], once_keep_both(b.live))
+    foldl(base.lin, 0, once_join_lin_fn(a, b))
+    lin = foldl(live, base.lin, once_union_one)
+    once_st(live, once_union(a.dead, b.dead), lin, a.at)
+
+def once_fin_one(st):
+    fn(z, s):
+        if once_has(st.live, s):
+            err(st.at, cat3(s, " 標了 once，沒有用到（會漏關）", ""))
+        else:
+            0
+
+def once_finish(st):
+    foldl(st.lin, 0, once_fin_one(st))
+
+def once_expr(e, st):
+    match e:
+        case NVar(s):
+            if once_is(st, s):
+                {st: once_consume(st, s), mv: s}
+            else:
+                {st: st, mv: ""}
+        case NCall(w):
+            s1 = once_expr(w.fun, st).st
+            {st: foldl(w.args, s1, once_e_st), mv: ""}
+        case NField(w):
+            {st: once_expr(w.obj, st).st, mv: ""}
+        case NBin(w):
+            s1 = once_expr(w.l, st).st
+            {st: once_expr(w.r, s1).st, mv: ""}
+        case NUn(w):
+            {st: once_expr(w.e, st).st, mv: ""}
+        case NList(xs):
+            {st: foldl(xs, st, once_e_st), mv: ""}
+        case NIf(w):
+            {st: once_if(w, st), mv: ""}
+        case NMatch(w):
+            {st: once_match(w, st), mv: ""}
+        case NFn(w):
+            {st: once_expr(w.body, st).st, mv: ""}
+        case NBlk(ss):
+            {st: once_stmts(ss, st), mv: ""}
+        case NHandle(w):
+            s1 = once_expr(w.e, st).st
+            {st: foldl(w.hs, s1, once_kv_st), mv: ""}
+        case NWith(w):
+            {st: once_with(w, st), mv: ""}
+        case NRec(w):
+            {st: foldl(w.fields, st, once_kv_st), mv: ""}
+        case NIdx(w):
+            s1 = once_expr(w.obj, st).st
+            {st: once_expr(w.i, s1).st, mv: ""}
+        case NSpread(x):
+            {st: once_expr(x, st).st, mv: ""}
+        case NFstr(ps):
+            {st: foldl(ps, st, once_fstr_st), mv: ""}
+        case NUpd(w):
+            s1 = once_expr(w.obj, st).st
+            {st: foldl(w.patches, s1, once_kv_st), mv: ""}
+        case _:
+            {st: st, mv: ""}
+
+def once_e_st(st, e):
+    once_expr(e, st).st
+
+def once_kv_st(st, kv):
+    match kv:
+        case NKV(w):
+            once_expr(w.e, st).st
+        case _:
+            st
+
+def once_fstr_st(st, p):
+    match p:
+        case FExp(x):
+            once_expr(x, st).st
+        case _:
+            st
+
+def once_if(w, st):
+    sc = once_expr(w.cond, st).st
+    st_t = once_stmts(w.then, sc)
+    st_e = once_stmts(w.else_, sc)
+    once_join(st_t, st_e, sc)
+
+def once_case(c, st):
+    match c:
+        case KCase(w):
+            once_stmts(w.body, st)
+        case _:
+            st
+
+def once_join_case(base):
+    fn(acc, c):
+        once_join(acc, once_case(c, base), base)
+
+def once_match(w, st):
+    s0 = once_expr(w.e, st).st
+    match w.cases:
+        case []:
+            s0
+        case [c, *rest]:
+            foldl(rest, once_case(c, s0), once_join_case(s0))
+
+def once_with(w, st):
+    s0 = once_expr(w.setup, st).st
+    s1 = once_st(once_add(s0.live, w.var), s0.dead, s0.lin, s0.at)
+    s2 = once_stmts(w.body, s1)
+    once_st(once_drop(s2.live, w.var), once_drop(s2.dead, w.var), s2.lin, s2.at)
+
+def once_stmt(s, st):
+    match s:
+        case DLet(w):
+            r = once_expr(w.e, st)
+            if r.mv == "":
+                r.st
+            else:
+                once_bind(r.st, w.name, r.mv)
+        case DExp(e):
+            once_expr(e, st).st
+        case DDef(w):
+            once_stmts(w.body, st)
+        case _:
+            st
+
+def once_stmt_st(st, s):
+    once_stmt(s, st)
+
+def once_stmts(ss, st):
+    foldl(ss, st, once_stmt_st)
+
+def self_call_e(e, name, under):
+    match e:
+        case NCall(w):
+            match w.fun:
+                case NVar(s):
+                    if s == name and not under:
+                        err({k: "", v: "", n: 0, line: w.ln, col: w.cl, file: w.fl}, "total 定義不能無條件呼叫自己")
+                    else:
+                        foldl(w.args, 0, fn(a, x): self_call_e(x, name, under))
+                case _:
+                    self_call_e(w.fun, name, under)
+                    foldl(w.args, 0, fn(a, x): self_call_e(x, name, under))
+        case NMatch(w):
+            self_call_e(w.e, name, under)
+            foldl(w.cases, 0, fn(a, c): self_call_c(c, name, True))
+        case NIf(w):
+            self_call_e(w.cond, name, under)
+            self_call_ss(w.then, name, under)
+            self_call_ss(w.else_, name, under)
+        case NFn(w):
+            self_call_e(w.body, name, under)
+        case NBlk(ss):
+            self_call_ss(ss, name, under)
+        case NBin(w):
+            self_call_e(w.l, name, under)
+            self_call_e(w.r, name, under)
+        case NUn(w):
+            self_call_e(w.e, name, under)
+        case NList(xs):
+            foldl(xs, 0, fn(a, x): self_call_e(x, name, under))
+        case NField(w):
+            self_call_e(w.obj, name, under)
+        case NHandle(w):
+            self_call_e(w.e, name, under)
+        case NWith(w):
+            self_call_e(w.setup, name, under)
+            self_call_ss(w.body, name, under)
+        case _:
+            0
+
+def self_call_c(c, name, under):
+    match c:
+        case KCase(w):
+            self_call_ss(w.body, name, under)
+        case _:
+            0
+
+def self_call_ss(ss, name, under):
+    foldl(ss, 0, fn(a, s): self_call_s(s, name, under))
+
+def self_call_s(s, name, under):
+    match s:
+        case DLet(w):
+            self_call_e(w.e, name, under)
+        case DExp(e):
+            self_call_e(e, name, under)
+        case DDef(w):
+            0
+        case _:
+            0
+
+def check_once_ps(ps, body, w):
+    at = {k: "", v: "", n: 0, line: w.ln, col: w.cl, file: w.fl}
+    once_finish(once_stmts(body, once_mk(ps, at)))
+
+def check_expr(e, eff):
+    match e:
+        case NCall(w):
+            lab = call_lab(w)
+            if lab == "":
+                0
+            else:
+                need_lab(eff, lab, w)
+            check_expr(w.fun, eff)
+            foldl(w.args, 0, fn(a, x): check_expr(x, eff))
+        case NField(w):
+            check_expr(w.obj, eff)
+        case NBin(w):
+            check_expr(w.l, eff)
+            check_expr(w.r, eff)
+        case NUn(w):
+            check_expr(w.e, eff)
+        case NList(xs):
+            foldl(xs, 0, fn(a, x): check_expr(x, eff))
+        case NIf(w):
+            check_expr(w.cond, eff)
+            check_stmts(w.then, eff)
+            check_stmts(w.else_, eff)
+        case NMatch(w):
+            check_match(w)
+            check_expr(w.e, eff)
+            foldl(w.cases, 0, fn(a, c): check_case(c, eff))
+        case NHandle(w):
+            extra = foldl(w.hs, [], fn(a, kv): hs_name(a, kv))
+            check_expr(w.e, [*eff, *extra])
+            foldl(w.hs, 0, fn(a, kv): check_kv(kv, eff))
+        case NFn(w):
+            check_expr(w.body, eff)
+        case NBlk(ss):
+            check_stmts(ss, eff)
+        case NWith(w):
+            check_expr(w.setup, eff)
+            check_stmts(w.body, eff)
+        case _:
+            0
+
+def hs_name(acc, kv):
+    match kv:
+        case NKV(w):
+            [*acc, w.name]
+        case _:
+            acc
+
+def check_kv(kv, eff):
+    match kv:
+        case NKV(w):
+            check_expr(w.e, eff)
+        case _:
+            0
+
+def check_case(c, eff):
+    match c:
+        case KCase(w):
+            check_stmts(w.body, eff)
+        case _:
+            0
+
+def check_stmts(ss, eff):
+    foldl(ss, 0, fn(a, s): check_stmt(s, eff))
+
+def check_stmt(s, eff):
+    match s:
+        case DLet(w):
+            check_expr(w.e, eff)
+        case DExp(e):
+            check_expr(e, eff)
+        case DDef(w):
+            check_def(w)
+        case _:
+            0
+
+def check_def(w):
+    if w.tot:
+        self_call_ss(w.body, w.name, False)
+    else:
+        0
+    check_once_ps(w.once_ps, w.body, w)
+    eff = w.eff
+    if w.name == "main" and list_len(eff) == 0:
+        check_stmts(w.body, ["IO"])
+    else:
+        check_stmts(w.body, eff)
+
+def check_prog(ss):
+    ns = def_names(ss)
+    foldl(ss, 0, fn(a, s): check_stmt_pass(s, ns))
+    infer_prog(ss)
+    ()
+
+def check_stmt_pass(s, ns):
+    match s:
+        case DDef(w):
+            check_def(w)
+        case DLet(w):
+            check_expr(w.e, [])
+        case DExp(e):
+            check_expr(e, [])
+        case _:
+            0
+
+def hid_has(hidden, s):
+    any(hidden, fn(h): h == s)
+
+def hid_at(ln, cl, fl):
+    {k: "", v: "", n: 0, line: ln, col: cl, file: fl}
+
+def check_hid_name(s, hidden, at):
+    if hid_has(hidden, s):
+        err(at, cat(s, " 未匯出"))
+    else:
+        0
+
+def check_hid_e(e, hidden, at):
+    match e:
+        case NVar(s):
+            check_hid_name(s, hidden, at)
+        case NCall(w):
+            at2 = hid_at(w.ln, w.cl, w.fl)
+            check_hid_e(w.fun, hidden, at2)
+            foldl(w.args, 0, fn(a, x): check_hid_e(x, hidden, at2))
+        case NField(w):
+            check_hid_e(w.obj, hidden, at)
+        case NBin(w):
+            check_hid_e(w.l, hidden, at)
+            check_hid_e(w.r, hidden, at)
+        case NUn(w):
+            check_hid_e(w.e, hidden, at)
+        case NList(xs):
+            foldl(xs, 0, fn(a, x): check_hid_e(x, hidden, at))
+        case NIf(w):
+            check_hid_e(w.cond, hidden, at)
+            check_hid_ss(w.then, hidden, at)
+            check_hid_ss(w.else_, hidden, at)
+        case NMatch(w):
+            check_hid_e(w.e, hidden, hid_at(w.ln, w.cl, w.fl))
+            foldl(w.cases, 0, fn(a, c): check_hid_c(c, hidden, at))
+        case NFn(w):
+            check_hid_e(w.body, hidden, at)
+        case NBlk(ss):
+            check_hid_ss(ss, hidden, at)
+        case NHandle(w):
+            check_hid_e(w.e, hidden, at)
+        case NWith(w):
+            check_hid_e(w.setup, hidden, at)
+            check_hid_ss(w.body, hidden, at)
+        case NRec(w):
+            foldl(w.fields, 0, fn(a, kv): check_hid_kv(kv, hidden, at))
+        case NIdx(w):
+            check_hid_e(w.obj, hidden, at)
+            check_hid_e(w.i, hidden, at)
+        case NSpread(x):
+            check_hid_e(x, hidden, at)
+        case _:
+            0
+
+def check_hid_kv(kv, hidden, at):
+    match kv:
+        case NKV(w):
+            check_hid_e(w.e, hidden, at)
+        case _:
+            0
+
+def check_hid_c(c, hidden, at):
+    match c:
+        case KCase(w):
+            check_hid_ss(w.body, hidden, at)
+        case _:
+            0
+
+def check_hid_s(s, hidden, at):
+    match s:
+        case DLet(w):
+            check_hid_e(w.e, hidden, at)
+        case DExp(e):
+            check_hid_e(e, hidden, at)
+        case DDef(w):
+            check_hid_ss(w.body, hidden, hid_at(w.ln, w.cl, w.fl))
+        case _:
+            0
+
+def check_hid_ss(ss, hidden, at):
+    foldl(ss, 0, fn(a, s): check_hid_s(s, hidden, at))
+
+def check_exports(ss, hidden):
+    if list_len(hidden) == 0:
+        0
+    else:
+        check_hid_ss(ss, hidden, hid_at(1, 1, ""))

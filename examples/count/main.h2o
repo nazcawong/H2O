@@ -1,0 +1,15 @@
+import lib
+
+def main():
+    args = argv()
+    match args[3]:
+        case None:
+            eprint("usage: h2o run examples/count -- file\n")
+            exit(2)
+        case Some(path):
+            with io.open(path) as f:
+                gone = touch(f)
+                src = io.read_file(path)
+                n = nlines(src)
+                tag: Vect[S[Z], Text] = label()
+                write_out(cat(join([vect_head(tag), int_to_text(n)], " "), "\n"))

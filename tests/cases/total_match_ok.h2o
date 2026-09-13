@@ -1,0 +1,10 @@
+total def map_int(xs: List[Int], f: Int -> Int) -> List[Int]:
+    match xs:
+        case []:
+            []
+        case [x, *rest]:
+            [f(x), *map_int(rest, f)]
+def main() -> {IO} ():
+    ys = map_int([1], fn(n): n)
+    if list_len(ys) == 1:
+        println("ok")

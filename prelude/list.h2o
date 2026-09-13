@@ -1,0 +1,20 @@
+# Prelude 模組 list — 介面檔，供人讀。
+# 實作由執行器提供。List 嚴格；沒有總是成功的 head。
+#
+# pub def map[A, B](xs: List[A], f: A -> B) -> List[B]
+# pub def filter[A](xs: List[A], f: A -> Bool) -> List[A]
+# pub def foldl[A, B](xs: List[A], acc: B, f: (B, A) -> B) -> B
+# pub def any[A](xs: List[A], f: A -> Bool) -> Bool
+# pub def join(xs: List[Text], sep: Text) -> Text
+# pub def list_len[A](xs: List[A]) -> Int
+# pub def chars(s: Text) -> List[Text]
+# pub def text_len(s: Text) -> Int
+# pub def slice_text(s: Text, i: Int, j: Int) -> Text
+# pub def starts_with(s: Text, p: Text) -> Bool
+# pub def cat(a: Text, b: Text) -> Text
+# pub def int_to_text(n: Int) -> Text
+# pub def die[A](msg: Text) -> A
+#
+# xs[i] : Maybe[A]
+# nonempty(xs) : Maybe[NonEmpty[A]]
+# head : NonEmpty[A] -> A

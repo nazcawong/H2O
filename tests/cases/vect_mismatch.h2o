@@ -1,0 +1,5 @@
+def take2(v: Vect[S[S[Z]], Int]) -> Int:
+    vect_len(v)
+
+def main() -> {IO} ():
+    println(take2(vect([1])))

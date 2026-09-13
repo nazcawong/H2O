@@ -1,0 +1,4 @@
+import mod
+
+def main() -> {IO} ():
+    write_out(cat(greet(), "\n"))

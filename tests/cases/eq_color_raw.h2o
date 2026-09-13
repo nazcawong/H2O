@@ -1,0 +1,10 @@
+type Color:
+    Red
+    Blue
+
+def same(x: Color, y: Color) -> Bool:
+    x == y
+
+def main():
+    if same(Red, Red):
+        println("ok")

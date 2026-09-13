@@ -1,0 +1,14 @@
+def main():
+    xs = ["a", "b"]
+    a = match xs[0]:
+        case None:
+            "no"
+        case Some(v):
+            v
+    miss = match xs[9]:
+        case None:
+            "none"
+        case Some(v):
+            v
+    println(a)
+    println(miss)

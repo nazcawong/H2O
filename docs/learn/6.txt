@@ -1,0 +1,26 @@
+第 6 課  紀錄
+EN: Lesson 6  records
+
+. 只做欄位或模組，不是方法。
+EN: `.` is field or module, not a method.
+
+關閉紀錄 `{name: Text}` 不能多欄位、不能少欄位。`{name: Text, ...R}` 可以多。
+EN: A closed record `{name: Text}` cannot gain or drop fields. `{name: Text, ...R}` may have extras.
+
+  p = {name: "Ada", active: True}
+  p.name
+  p.active
+
+類型別名（在檔案裡；REPL 也可打 type）：
+
+  type User = {name: Text, active: Bool}
+
+更新欄位用展開，不要改原值：
+
+  {p..., active: False}
+
+練習：
+
+  1) 做一筆 {name: "Grace", age: 85}，印 name
+  2) :t p.name  （先定義 p）
+  3) 對 p 做 {p..., age: 86}，確認 p.age 仍是 85

@@ -1,0 +1,5 @@
+def f(x: Int) -> Int:
+    x
+
+def main() -> {IO} ():
+    println(int_to_text(f(1)))

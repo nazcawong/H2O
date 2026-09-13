@@ -1,0 +1,6 @@
+def main():
+    xs = [1, 2, 3]
+    ys = [x * 10 for x in xs if x > 1]
+    zs = [n + 1 for n in [1, 2]]
+    if ys == [20, 30] and zs == [2, 3]:
+        println("comp-ok")

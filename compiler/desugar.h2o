@@ -1,0 +1,174 @@
+# h2oc desugar — BH 子集。
+def has_hole(e):
+    match e:
+        case NHole(z):
+            True
+        case NField(w):
+            has_hole(w.obj)
+        case NCall(w):
+            has_hole(w.fun) or any(w.args, has_hole)
+        case NBin(w):
+            has_hole(w.l) or has_hole(w.r)
+        case NUn(w):
+            has_hole(w.e)
+        case NList(xs):
+            any(xs, has_hole)
+        case NComp(w):
+            has_hole(w.e) or has_hole(w.xs) or (w.has and has_hole(w.pred))
+        case NSpread(x):
+            has_hole(x)
+        case NIdx(w):
+            has_hole(w.obj) or has_hole(w.i) or (w.has and has_hole(w.end))
+        case NFstr(ps):
+            any(ps, fstr_has_hole)
+        case _:
+            False
+
+def fstr_has_hole(p):
+    match p:
+        case FExp(e):
+            has_hole(e)
+        case _:
+            False
+
+def hole_name(n):
+    cat("_h", int_to_text(n))
+
+def repl_holes(e, n):
+    match e:
+        case NHole(z):
+            {e: NVar(hole_name(n)), n: n + 1}
+        case NField(w):
+            r = repl_holes(w.obj, n)
+            {e: NField({obj: r.e, name: w.name}), n: r.n}
+        case NCall(w):
+            f = repl_holes(w.fun, n)
+            a = repl_holes_list(w.args, f.n)
+            {e: NCall({fun: f.e, args: a.es, ln: w.ln, cl: w.cl, fl: w.fl}), n: a.n}
+        case NBin(w):
+            l = repl_holes(w.l, n)
+            r = repl_holes(w.r, l.n)
+            {e: NBin({op: w.op, l: l.e, r: r.e}), n: r.n}
+        case NUn(w):
+            r = repl_holes(w.e, n)
+            {e: NUn({op: w.op, e: r.e}), n: r.n}
+        case NList(xs):
+            a = repl_holes_list(xs, n)
+            {e: NList(a.es), n: a.n}
+        case NSpread(x):
+            r = repl_holes(x, n)
+            {e: NSpread(r.e), n: r.n}
+        case NIdx(w):
+            o = repl_holes(w.obj, n)
+            i = repl_holes(w.i, o.n)
+            if w.has:
+                en = repl_holes(w.end, i.n)
+                {e: NIdx({obj: o.e, i: i.e, has: True, end: en.e}), n: en.n}
+            else:
+                {e: NIdx({obj: o.e, i: i.e, has: False, end: w.end}), n: i.n}
+        case _:
+            {e: e, n: n}
+
+def repl_holes_list(xs, n):
+    foldl(xs, {es: [], n: n}, repl_holes_item)
+
+def repl_holes_item(st, x):
+    r = repl_holes(x, st.n)
+    {es: [*st.es, r.e], n: r.n}
+
+def wrap_holes(e):
+    if has_hole(e):
+        r = repl_holes(e, 0)
+        NFn({ps: map(range(r.n), hole_name), pts: map(range(r.n), fn(i): TMiss(0)), body: r.e})
+    else:
+        e
+
+def ds_comp(w):
+    xs = ds_wrap(w.xs)
+    fn_e = NFn({ps: [w.var], pts: [TMiss(0)], body: ds_wrap(w.e)})
+    if w.has:
+        pred = NFn({ps: [w.var], pts: [TMiss(0)], body: ds_wrap(w.pred)})
+        flt = NCall({fun: NVar("filter"), args: [xs, pred], ln: w.ln, cl: w.cl, fl: w.fl})
+        NCall({fun: NVar("map"), args: [flt, fn_e], ln: w.ln, cl: w.cl, fl: w.fl})
+    else:
+        NCall({fun: NVar("map"), args: [xs, fn_e], ln: w.ln, cl: w.cl, fl: w.fl})
+
+def ds_expr(e):
+    match e:
+        case NCall(w):
+            NCall({fun: ds_expr(w.fun), args: map(w.args, ds_wrap), ln: w.ln, cl: w.cl, fl: w.fl})
+        case NField(w):
+            NField({obj: ds_expr(w.obj), name: w.name})
+        case NBin(w):
+            NBin({op: w.op, l: ds_expr(w.l), r: ds_expr(w.r)})
+        case NUn(w):
+            NUn({op: w.op, e: ds_expr(w.e)})
+        case NList(xs):
+            NList(map(xs, ds_wrap))
+        case NComp(w):
+            ds_comp(w)
+        case NSpread(x):
+            NSpread(ds_expr(x))
+        case NIdx(w):
+            if w.has:
+                NIdx({obj: ds_expr(w.obj), i: ds_wrap(w.i), has: True, end: ds_wrap(w.end)})
+            else:
+                NIdx({obj: ds_expr(w.obj), i: ds_wrap(w.i), has: False, end: w.end})
+        case NRec(w):
+            NRec({fields: map(w.fields, ds_kv), has: w.has, sp: ds_expr(w.sp)})
+        case NUpd(w):
+            NUpd({obj: ds_expr(w.obj), patches: map(w.patches, ds_kv)})
+        case NHandle(w):
+            NHandle({e: ds_expr(w.e), hs: map(w.hs, ds_kv)})
+        case NWith(w):
+            NWith({setup: ds_expr(w.setup), var: w.var, body: ds_stmts(w.body)})
+        case NIf(w):
+            NIf({cond: ds_wrap(w.cond), then: ds_stmts(w.then), else_: ds_stmts(w.else_), has: w.has})
+        case NMatch(w):
+            NMatch({e: ds_wrap(w.e), cases: map(w.cases, ds_case), ln: w.ln, cl: w.cl, fl: w.fl})
+        case NFn(w):
+            NFn({ps: w.ps, pts: w.pts, body: ds_expr(w.body)})
+        case NBlk(ss):
+            NBlk(ds_stmts(ss))
+        case NFstr(ps):
+            NFstr(map(ps, ds_fpart))
+        case _:
+            e
+
+def ds_wrap(e):
+    wrap_holes(ds_expr(e))
+
+def ds_kv(kv):
+    match kv:
+        case NKV(w):
+            NKV({name: w.name, e: ds_wrap(w.e)})
+        case _:
+            kv
+
+def ds_fpart(p):
+    match p:
+        case FExp(e):
+            FExp(ds_wrap(e))
+        case _:
+            p
+
+def ds_case(c):
+    match c:
+        case KCase(w):
+            KCase({pat: w.pat, body: ds_stmts(w.body)})
+        case _:
+            c
+
+def ds_stmts(ss):
+    map(ss, ds_stmt)
+
+def ds_stmt(s):
+    match s:
+        case DLet(w):
+            DLet({name: w.name, e: ds_wrap(w.e), ty: w.ty})
+        case DExp(e):
+            DExp(ds_wrap(e))
+        case DDef(w):
+            DDef({name: w.name, ps: w.ps, pts: w.pts, body: ds_stmts(w.body), eff: w.eff, tot: w.tot, once_ps: w.once_ps, ret: w.ret, ln: w.ln, cl: w.cl, fl: w.fl, tcs: w.tcs})
+        case _:
+            s

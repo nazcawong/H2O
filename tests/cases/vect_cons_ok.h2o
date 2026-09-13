@@ -1,0 +1,6 @@
+def main() -> {IO} ():
+    v0 = vect([])
+    v1 = vect_cons("a", v0)
+    v2 = vect_cons("b", v1)
+    w: Vect[S[S[Z]], Text] = v2
+    println(vect_head(w))

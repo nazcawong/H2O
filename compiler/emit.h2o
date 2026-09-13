@@ -1,0 +1,414 @@
+# h2oc emit Python — BH 子集。
+def ind_of(lv: Int) -> Text:
+    join(map(range(lv * 4), fn(i): " "), "")
+
+def py_name(s):
+    if s == "None":
+        "_HNone"
+    else:
+        s
+
+def escape_py_step(acc: Text, ch: Text) -> Text:
+    if ch == "\\":
+        cat(acc, "\\\\")
+    elif ch == "\"":
+        cat(acc, "\\\"")
+    elif ch == "\n":
+        cat(acc, "\\n")
+    elif ch == "\t":
+        cat(acc, "\\t")
+    else:
+        cat(acc, ch)
+
+def py_str(s):
+    cat3("\"", foldl(chars(s), "", escape_py_step), "\"")
+
+def known_ctor(s):
+    s == "Some" or s == "Ok" or s == "Err" or s == "NonEmpty"
+
+def emit_params(ps):
+    join(map(ps, py_name), ", ")
+
+
+def emit_expr(e, lv: Int, n: Int) -> {h: Text, e: Text, n: Int}:
+    match e:
+        case NInt(x):
+            {h: "", e: int_to_text(x), n: n}
+        case NText(s):
+            {h: "", e: py_str(s), n: n}
+        case NFstr(ps):
+            emit_fstr(ps, lv, n)
+        case NHole(z):
+            {h: "", e: "None", n: n}
+        case NBool(b):
+            if b:
+                {h: "", e: "True", n: n}
+            else:
+                {h: "", e: "False", n: n}
+        case NVar(s):
+            {h: "", e: py_name(s), n: n}
+        case NUnit(z):
+            {h: "", e: "None", n: n}
+        case NCall(w):
+            emit_call(w, lv, n)
+        case NField(w):
+            o = emit_expr(w.obj, lv, n)
+            hid = cat("_fld", int_to_text(o.n))
+            h = cat(o.h, join([ind_of(lv), "def ", hid, "(_o):\n", ind_of(lv + 1), "return (_o[", py_str(w.name), "] if isinstance(_o, dict) else getattr(_o, ", py_str(w.name), "))\n"], ""))
+            {h: h, e: cat3(hid, "(", cat(o.e, ")")), n: o.n + 1}
+        case NIdx(w):
+            emit_idx(w, lv, n)
+        case NList(xs):
+            emit_list(xs, lv, n)
+        case NSpread(x):
+            r = emit_expr(x, lv, n)
+            {h: r.h, e: cat("*", r.e), n: r.n}
+        case NRec(w):
+            emit_rec(w, lv, n)
+        case NUpd(w):
+            emit_upd(w, lv, n)
+        case NHandle(w):
+            emit_handle(w, lv, n)
+        case NWith(w):
+            emit_with(w, lv, n)
+        case NBin(w):
+            l = emit_expr(w.l, lv, n)
+            r = emit_expr(w.r, lv, l.n)
+            op = if w.op == "/":
+                "//"
+            else:
+                w.op
+            {h: cat(l.h, r.h), e: join(["(", l.e, " ", op, " ", r.e, ")"], ""), n: r.n}
+        case NUn(w):
+            r = emit_expr(w.e, lv, n)
+            if w.op == "not":
+                {h: r.h, e: cat3("(not ", r.e, ")"), n: r.n}
+            else:
+                {h: r.h, e: cat3("(-", r.e, ")"), n: r.n}
+        case NIf(w):
+            emit_if(w, lv, n)
+        case NMatch(w):
+            emit_match(w, lv, n)
+        case NFn(w):
+            emit_fn(w, lv, n)
+        case NBlk(ss):
+            rid = cat("_r", int_to_text(n))
+            b = emit_stmts(ss, lv, n + 1, True, rid)
+            h = cat(join([ind_of(lv), rid, " = None\n"], ""), b.h)
+            {h: h, e: rid, n: b.n}
+        case _:
+            {h: "", e: "None", n: n}
+
+def emit_call(w, lv, n):
+    fe = emit_expr(w.fun, lv, n)
+    ar = emit_expr_list(w.args, lv, fe.n)
+    match w.fun:
+        case NVar(s):
+            if is_ctor_name(s) and not known_ctor(s):
+                if list_len(w.args) == 0:
+                    {h: cat(fe.h, ar.h), e: cat3("(", py_str(s), ",)"), n: ar.n}
+                else:
+                    {h: cat(fe.h, ar.h), e: join(["(", py_str(s), ", ", ar.e, ")"], ""), n: ar.n}
+            else:
+                {h: cat(fe.h, ar.h), e: join([fe.e, "(", ar.e, ")"], ""), n: ar.n}
+        case _:
+            {h: cat(fe.h, ar.h), e: join([fe.e, "(", ar.e, ")"], ""), n: ar.n}
+
+def emit_idx(w, lv, n):
+    o = emit_expr(w.obj, lv, n)
+    i = emit_expr(w.i, lv, o.n)
+    if w.has:
+        e = emit_expr(w.end, lv, i.n)
+        {h: cat3(o.h, i.h, e.h), e: join(["(", o.e, ")[", i.e, ":", e.e, "]"], ""), n: e.n}
+    else:
+        hid = cat("_ix", int_to_text(i.n))
+        h = cat(cat(o.h, i.h), join([ind_of(lv), "def ", hid, "(_o, _i):\n", ind_of(lv + 1), "return (('Some', _o[_i]) if 0 <= _i < len(_o) else _HNone)\n"], ""))
+        {h: h, e: join([hid, "(", o.e, ", ", i.e, ")"], ""), n: i.n + 1}
+
+def emit_fstr(ps, lv, n):
+    r = foldl(ps, {h: "", e: "", n: n, first: True}, emit_fstr_item(lv))
+    if r.first:
+        {h: "", e: "''", n: n}
+    else:
+        {h: r.h, e: r.e, n: r.n}
+
+def emit_fstr_item(lv):
+    def step(st: {h: Text, e: Text, n: Int, first: Bool}, p) -> {h: Text, e: Text, n: Int, first: Bool}:
+        match p:
+            case FLit(s):
+                bit = py_str(s)
+                if st.first:
+                    {h: st.h, e: bit, n: st.n, first: False}
+                else:
+                    {h: st.h, e: cat3(st.e, " + ", bit), n: st.n, first: False}
+            case FExp(e):
+                r = emit_expr(e, lv, st.n)
+                bit = cat3("str(", r.e, ")")
+                if st.first:
+                    {h: cat(st.h, r.h), e: bit, n: r.n, first: False}
+                else:
+                    {h: cat(st.h, r.h), e: cat3(st.e, " + ", bit), n: r.n, first: False}
+            case _:
+                st
+    step
+
+def emit_expr_list(xs, lv: Int, n: Int) -> {h: Text, e: Text, n: Int, first: Bool}:
+    def step(st: {h: Text, e: Text, n: Int, first: Bool}, x) -> {h: Text, e: Text, n: Int, first: Bool}:
+        r = emit_expr(x, lv, st.n)
+        if st.first:
+            {h: cat(st.h, r.h), e: r.e, n: r.n, first: False}
+        else:
+            {h: cat(st.h, r.h), e: cat3(st.e, ", ", r.e), n: r.n, first: False}
+    foldl(xs, {h: "", e: "", n: n, first: True}, step)
+
+def emit_list(xs, lv, n):
+    r = emit_expr_list(xs, lv, n)
+    {h: r.h, e: cat3("[", r.e, "]"), n: r.n}
+
+def emit_handle(w, lv, n):
+    rid = cat("_rh", int_to_text(n))
+    inner = emit_expr(w.e, lv, n + 1)
+    hs = foldl(w.hs, {h: "", e: "", n: inner.n, first: True}, emit_hs_item(lv))
+    h = join([
+        inner.h, hs.h,
+        ind_of(lv), "_hs = {", hs.e, "}\n",
+        ind_of(lv), "_merged = dict(_cur()); _merged.update(_hs)\n",
+        ind_of(lv), "_push(_merged)\n",
+        ind_of(lv), rid, " = None\n",
+        ind_of(lv), "try:\n",
+        ind_of(lv + 1), "_val = ", inner.e, "\n",
+        ind_of(lv + 1), "_eh = _hs.get(\"Except\")\n",
+        ind_of(lv + 1), "if isinstance(_eh, _ExceptH) and _eh.mode == \"result\":\n",
+        ind_of(lv + 2), rid, " = (\"Ok\", _val)\n",
+        ind_of(lv + 1), "else:\n",
+        ind_of(lv + 2), rid, " = _val\n",
+        ind_of(lv), "except _ExceptThrown as _ex:\n",
+        ind_of(lv + 1), "_eh = _hs.get(\"Except\")\n",
+        ind_of(lv + 1), "if isinstance(_eh, _ExceptH) and _eh.mode == \"result\":\n",
+        ind_of(lv + 2), rid, " = (\"Err\", _ex.value)\n",
+        ind_of(lv + 1), "else:\n",
+        ind_of(lv + 2), "raise\n",
+        ind_of(lv), "finally:\n",
+        ind_of(lv + 1), "_pop()\n"
+    ], "")
+    {h: h, e: rid, n: hs.n}
+
+def emit_hs_item(lv):
+    def step(st: {h: Text, e: Text, n: Int, first: Bool}, kv) -> {h: Text, e: Text, n: Int, first: Bool}:
+        match kv:
+            case NKV(w):
+                r = emit_expr(w.e, lv, st.n)
+                bit = cat3(py_str(w.name), ": ", r.e)
+                if st.first:
+                    {h: cat(st.h, r.h), e: bit, n: r.n, first: False}
+                else:
+                    {h: cat(st.h, r.h), e: cat3(st.e, ", ", bit), n: r.n, first: False}
+            case _:
+                st
+    step
+
+def emit_with(w, lv, n):
+    rid = cat("_rw", int_to_text(n))
+    su = emit_expr(w.setup, lv, n + 1)
+    body = emit_stmts(w.body, lv + 1, su.n, True, rid)
+    vn = py_name(w.var)
+    h = join([
+        su.h,
+        ind_of(lv), vn, " = ", su.e, "\n",
+        ind_of(lv), rid, " = None\n",
+        ind_of(lv), "try:\n",
+        body.h,
+        ind_of(lv), "finally:\n",
+        ind_of(lv + 1), "if isinstance(", vn, ", dict):\n",
+        ind_of(lv + 2), vn, "[\"open\"] = False\n"
+    ], "")
+    {h: h, e: rid, n: body.n}
+
+def emit_upd(w, lv, n):
+    o = emit_expr(w.obj, lv, n)
+    r = foldl(w.patches, {h: o.h, e: "", n: o.n, first: True}, emit_field_step(lv))
+    {h: r.h, e: join(["{**(", o.e, "), ", r.e, "}"], ""), n: r.n}
+
+def emit_rec(w, lv, n):
+    r = foldl(w.fields, {h: "", e: "", n: n, first: True}, emit_field_step(lv))
+    bits = r.e
+    if w.has:
+        sp = emit_expr(w.sp, lv, r.n)
+        if r.first:
+            {h: cat(r.h, sp.h), e: join(["{**(", sp.e, ")}"], ""), n: sp.n}
+        else:
+            {h: cat(r.h, sp.h), e: join(["{**(", sp.e, "), ", bits, "}"], ""), n: sp.n}
+    else:
+        {h: r.h, e: cat3("{", bits, "}"), n: r.n}
+
+def emit_field_step(lv: Int):
+    def step(st: {h: Text, e: Text, n: Int, first: Bool}, kv) -> {h: Text, e: Text, n: Int, first: Bool}:
+        match kv:
+            case NKV(w):
+                r = emit_expr(w.e, lv, st.n)
+                bit = cat3(py_str(w.name), ": ", r.e)
+                if st.first:
+                    {h: cat(st.h, r.h), e: bit, n: r.n, first: False}
+                else:
+                    {h: cat(st.h, r.h), e: cat3(st.e, ", ", bit), n: r.n, first: False}
+            case _:
+                st
+    step
+
+def emit_if(w, lv, n):
+    c = emit_expr(w.cond, lv, n)
+    rid = cat("_r", int_to_text(c.n))
+    th = emit_stmts(w.then, lv + 1, c.n + 1, True, rid)
+    if w.has:
+        el = emit_stmts(w.else_, lv + 1, th.n, True, rid)
+        h = join([c.h, ind_of(lv), rid, " = None\n", ind_of(lv), "if ", c.e, ":\n", th.h, ind_of(lv), "else:\n", el.h], "")
+        {h: h, e: rid, n: el.n}
+    else:
+        h = join([c.h, ind_of(lv), rid, " = None\n", ind_of(lv), "if ", c.e, ":\n", th.h], "")
+        {h: h, e: rid, n: th.n}
+
+def emit_fn(w, lv, n):
+    name = cat("_lam", int_to_text(n))
+    match w.body:
+        case NBlk(ss):
+            b = emit_stmts(ss, lv + 1, n + 1, True, "")
+            h = join([ind_of(lv), "def ", name, "(", emit_params(w.ps), "):\n", b.h], "")
+            {h: h, e: name, n: b.n}
+        case _:
+            b = emit_expr(w.body, lv + 1, n + 1)
+            h = join([ind_of(lv), "def ", name, "(", emit_params(w.ps), "):\n", b.h, ind_of(lv + 1), "return ", b.e, "\n"], "")
+            {h: h, e: name, n: b.n}
+
+def emit_match(w, lv, n):
+    e = emit_expr(w.e, lv, n)
+    rid = cat("_r", int_to_text(e.n))
+    tv = cat("_t", int_to_text(e.n))
+    cs = emit_cases(w.cases, lv, e.n + 1, True, rid, tv)
+    h = join([e.h, ind_of(lv), tv, " = ", e.e, "\n", ind_of(lv), rid, " = None\n", cs.h, ind_of(lv), "else:\n", ind_of(lv + 1), "raise Exception(\"match\")\n"], "")
+    {h: h, e: rid, n: cs.n}
+
+def emit_cases(cs, lv: Int, n: Int, first: Bool, dest: Text, tv: Text) -> {h: Text, n: Int, first: Bool}:
+    def step(st: {h: Text, n: Int, first: Bool}, c) -> {h: Text, n: Int, first: Bool}:
+        match c:
+            case KCase(w):
+                pb = emit_pat(w.pat, tv)
+                body = emit_stmts(w.body, lv + 1, st.n, True, dest)
+                kw = if st.first:
+                    "if"
+                else:
+                    "elif"
+                h = join([st.h, ind_of(lv), kw, " ", pb.cond, ":\n", join(map(pb.binds, fn(b): cat(ind_of(lv + 1), cat(b, "\n"))), ""), body.h], "")
+                {h: h, n: body.n, first: False}
+            case _:
+                st
+    foldl(cs, {h: "", n: n, first: first}, step)
+
+def emit_pat(p, var):
+    match p:
+        case QWild(z):
+            {cond: "True", binds: []}
+        case QVar(s):
+            {cond: "True", binds: [cat3(py_name(s), " = ", var)]}
+        case QInt(x):
+            {cond: cat3(var, " == ", int_to_text(x)), binds: []}
+        case QText(s):
+            {cond: cat3(var, " == ", py_str(s)), binds: []}
+        case QCtor(w):
+            emit_pctor(w, var)
+        case QList(w):
+            emit_plist(w, var)
+        case _:
+            {cond: "True", binds: []}
+
+def emit_pctor(w, var):
+    if w.name == "None":
+        {cond: join([var, " == _HNone or (isinstance(", var, ", tuple) and ", var, "[0] == \"None\")"], ""), binds: []}
+    else:
+        base = join(["(isinstance(", var, ", tuple) and ", var, "[0] == ", py_str(w.name), ")"], "")
+        if w.has:
+            inner = emit_pat(w.arg, cat(var, "[1]"))
+            {cond: cat3(base, " and ", inner.cond), binds: inner.binds}
+        else:
+            {cond: base, binds: []}
+
+def emit_plist(w, var):
+    if list_len(w.items) == 0 and not w.has:
+        {cond: cat(var, " == []"), binds: []}
+    else:
+        n = list_len(w.items)
+        cond0 = join(["isinstance(", var, ", list) and len(", var, ") >= ", int_to_text(n)], "")
+        def pstep(st: {i: Int, cond: Text, binds: List[Text]}, p) -> {i: Int, cond: Text, binds: List[Text]}:
+            inner = emit_pat(p, join([var, "[", int_to_text(st.i), "]"], ""))
+            {i: st.i + 1, cond: cat3(st.cond, " and ", inner.cond), binds: [*st.binds, *inner.binds]}
+        st = foldl(w.items, {i: 0, cond: cond0, binds: []}, pstep)
+        if w.has:
+            {cond: st.cond, binds: [*st.binds, join([w.rest, " = ", var, "[", int_to_text(n), ":]"], "")]}
+        else:
+            {cond: join([st.cond, " and len(", var, ") == ", int_to_text(n)], ""), binds: st.binds}
+
+def emit_ret(lv, dest, e):
+    if dest == "":
+        join([ind_of(lv), "return ", e, "\n"], "")
+    else:
+        join([ind_of(lv), dest, " = ", e, "\n"], "")
+
+def emit_stmts(ss, lv: Int, n: Int, ret: Bool, dest: Text) -> {h: Text, n: Int}:
+    if list_len(ss) == 0:
+        {h: cat(ind_of(lv), "pass\n"), n: n}
+    else:
+        emit_stmts_go(ss, lv, n, ret, dest)
+
+def emit_stmts_go(ss, lv: Int, n: Int, ret: Bool, dest: Text) -> {h: Text, n: Int}:
+    match ss:
+        case [s]:
+            emit_stmt(s, lv, n, ret, dest)
+        case [s, *rest]:
+            a = emit_stmt(s, lv, n, False, dest)
+            b = emit_stmts_go(rest, lv, a.n, ret, dest)
+            {h: cat(a.h, b.h), n: b.n}
+        case _:
+            {h: cat(ind_of(lv), "pass\n"), n: n}
+
+def emit_stmt(s, lv: Int, n: Int, ret: Bool, dest: Text) -> {h: Text, n: Int}:
+    match s:
+        case DLet(w):
+            e = emit_expr(w.e, lv, n)
+            line = join([ind_of(lv), py_name(w.name), " = ", e.e, "\n"], "")
+            if ret:
+                {h: cat3(e.h, line, emit_ret(lv, dest, py_name(w.name))), n: e.n}
+            else:
+                {h: cat(e.h, line), n: e.n}
+        case DExp(e):
+            r = emit_expr(e, lv, n)
+            if ret:
+                {h: cat(r.h, emit_ret(lv, dest, r.e)), n: r.n}
+            else:
+                {h: cat(r.h, join([ind_of(lv), r.e, "\n"], "")), n: r.n}
+        case DDef(w):
+            d = emit_def(w, lv, n)
+            if ret:
+                {h: cat(d.h, emit_ret(lv, dest, "None")), n: d.n}
+            else:
+                d
+        case _:
+            {h: cat(ind_of(lv), "pass\n"), n: n}
+
+def emit_def(w, lv, n):
+    b = emit_stmts(w.body, lv + 1, n, True, "")
+    h = join([ind_of(lv), "def ", py_name(w.name), "(", emit_params(w.ps), "):\n", b.h, "\n"], "")
+    {h: h, n: b.n}
+
+def emit_program(ss, n):
+    st = foldl(ss, {h: "", n: n}, emit_top)
+    {h: cat(st.h, "if __name__ == \"__main__\":\n    _push({\"IO\": _IOH()})\n    try:\n        main()\n    finally:\n        _pop()\n"), n: st.n}
+
+def emit_top(st, s):
+    match s:
+        case DDef(w):
+            d = emit_def(w, 0, st.n)
+            {h: cat(st.h, d.h), n: d.n}
+        case DLet(w):
+            e = emit_expr(w.e, 0, st.n)
+            {h: cat3(st.h, e.h, join([py_name(w.name), " = ", e.e, "\n"], "")), n: e.n}
+        case _:
+            st

@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.DS_Store
+compiler/h2oc.py
+bin/h2o
+bin/h2o.c
+bin/seed-cc.err

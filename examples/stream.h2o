@@ -1,0 +1,11 @@
+# v0.7 Stream。List 嚴格；無限結構用 Stream。
+
+def main():
+    nats = Stream.iterate(0, _ + 1)
+    xs = Stream.take(nats, 5)
+    s = match xs[0]:
+        case Some(n):
+            "ok"
+        case None:
+            "no"
+    println(s)

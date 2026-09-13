@@ -1,0 +1,14 @@
+pub def nlines(s: Text) -> Int:
+    foldl(chars(s), 0, nlines_step)
+
+def nlines_step(n, c):
+    if c == "\n":
+        n + 1
+    else:
+        n
+
+pub def touch(f: once File) -> File:
+    f
+
+pub def label() -> Vect[S[Z], Text]:
+    vect(["count"])

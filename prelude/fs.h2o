@@ -1,0 +1,3 @@
+# 檔案系統：介面檔。實作是 io.*（執行核）。
+# pub def read_file(path: Text) -> {IO} Text
+# pub def write_file(path: Text, s: Text) -> {IO} ()

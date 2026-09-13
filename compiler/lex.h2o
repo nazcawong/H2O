@@ -1,0 +1,397 @@
+# h2oc lex — BH 子集。沒有 |>、_、f-string。
+type Tok = {k: Text, v: Text, n: Int, line: Int, col: Int, file: Text}
+
+def mk(k: Text, v: Text, n: Int, line: Int) -> Tok:
+    {k: k, v: v, n: n, line: line, col: 1, file: ""}
+
+def mkc(k: Text, v: Text, n: Int, line: Int, col: Int) -> Tok:
+    {k: k, v: v, n: n, line: line, col: col, file: ""}
+
+def cat3(a, b, c):
+    cat(a, cat(b, c))
+
+def cat4(a, b, c, d):
+    cat(a, cat3(b, c, d))
+
+def is_alpha(ch):
+    any(chars("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_"), fn(c): c == ch)
+
+def is_digit(ch):
+    any(chars("0123456789"), fn(c): c == ch)
+
+def is_alnum(ch):
+    is_alpha(ch) or is_digit(ch)
+
+def is_upper(ch):
+    any(chars("ABCDEFGHIJKLMNOPQRSTUVWXYZ"), fn(c): c == ch)
+
+def is_ctor_name(s):
+    if text_len(s) == 0:
+        False
+    else:
+        is_upper(slice_text(s, 0, 1))
+
+def digit_val(ch: Text) -> Int:
+    if ch == "0":
+        0
+    elif ch == "1":
+        1
+    elif ch == "2":
+        2
+    elif ch == "3":
+        3
+    elif ch == "4":
+        4
+    elif ch == "5":
+        5
+    elif ch == "6":
+        6
+    elif ch == "7":
+        7
+    elif ch == "8":
+        8
+    elif ch == "9":
+        9
+    else:
+        die(cat("digit ", ch))
+
+def parse_int_text(s):
+    foldl(chars(s), 0, fn(n, ch): n * 10 + digit_val(ch))
+
+def word_kind(w: Text) -> Text:
+    if w == "def":
+        "def"
+    elif w == "if":
+        "if"
+    elif w == "elif":
+        "elif"
+    elif w == "else":
+        "else"
+    elif w == "match":
+        "match"
+    elif w == "case":
+        "case"
+    elif w == "fn":
+        "fn"
+    elif w == "type":
+        "type"
+    elif w == "not":
+        "not"
+    elif w == "and":
+        "and"
+    elif w == "or":
+        "or"
+    elif w == "in":
+        "in"
+    elif w == "for":
+        "for"
+    elif w == "from":
+        "from"
+    elif w == "import":
+        "import"
+    elif w == "return":
+        "return"
+    elif w == "pub":
+        "pub"
+    elif w == "trait":
+        "trait"
+    elif w == "impl":
+        "impl"
+    elif w == "effect":
+        "effect"
+    elif w == "handle":
+        "handle"
+    elif w == "with":
+        "with"
+    elif w == "update":
+        "update"
+    elif w == "as":
+        "as"
+    elif w == "total":
+        "total"
+    else:
+        "name"
+
+def nth(xs, i):
+    match xs[i]:
+        case Some(x):
+            x
+        case None:
+            die(cat("nth ", int_to_text(i)))
+
+def last_of(xs: List[Int]) -> Int:
+    foldl(xs, 0, fn(a, x): x)
+
+def drop_last(xs: List[Int]) -> List[Int]:
+    n = list_len(xs)
+    def step(st: {i: Int, out: List[Int]}, x: Int) -> {i: Int, out: List[Int]}:
+        if st.i == n - 1:
+            st
+        else:
+            {i: st.i + 1, out: [*st.out, x]}
+    foldl(xs, {i: 0, out: []}, step).out
+
+def acc_line(st: {cur: Text, out: List[Text]}, ch: Text) -> {cur: Text, out: List[Text]}:
+    if ch == "\n":
+        {cur: "", out: [*st.out, st.cur]}
+    else:
+        {cur: cat(st.cur, ch), out: st.out}
+
+def src_lines(src: Text) -> List[Text]:
+    st = foldl(chars(src), {cur: "", out: []}, acc_line)
+    if st.cur == "":
+        st.out
+    else:
+        [*st.out, st.cur]
+
+type Line = {n: Int, s: Text}
+
+def number_step(st: {i: Int, out: List[Line]}, line: Text) -> {i: Int, out: List[Line]}:
+    {i: st.i + 1, out: [*st.out, {n: st.i, s: line}]}
+
+def numbered_lines(ls: List[Text]) -> List[Line]:
+    foldl(ls, {i: 1, out: []}, number_step).out
+
+def depth_step(st: {d: Int, inn: Bool, esc: Bool}, ch: Text) -> {d: Int, inn: Bool, esc: Bool}:
+    if st.esc:
+        {d: st.d, inn: st.inn, esc: False}
+    elif st.inn:
+        if ch == "\\":
+            {d: st.d, inn: True, esc: True}
+        elif ch == "\"":
+            {d: st.d, inn: False, esc: False}
+        else:
+            st
+    else:
+        if ch == "\"":
+            {d: st.d, inn: True, esc: False}
+        elif ch == "(" or ch == "[" or ch == "{":
+            {d: st.d + 1, inn: False, esc: False}
+        elif ch == ")" or ch == "]" or ch == "}":
+            {d: st.d - 1, inn: False, esc: False}
+        else:
+            st
+
+def bracket_depth(s: Text) -> Int:
+    foldl(chars(s), {d: 0, inn: False, esc: False}, depth_step).d
+
+def flush_join(st: {cur: Text, n: Int, depth: Int, out: List[Line], has: Bool, ind: Int}) -> List[Line]:
+    if st.has:
+        [*st.out, {n: st.n, s: st.cur}]
+    else:
+        st.out
+
+def is_cont_line(s):
+    t = lstrip(strip_comment(s))
+    starts_with(t, "|>") or starts_with(t, ",") or starts_with(t, "and ") or starts_with(t, "or ") or t == "and" or t == "or"
+
+def join_one(st: {cur: Text, n: Int, depth: Int, out: List[Line], has: Bool, ind: Int}, lined: Line) -> {cur: Text, n: Int, depth: Int, out: List[Line], has: Bool, ind: Int}:
+    if is_blank_line(lined.s):
+        st
+    elif st.depth > 0 or (st.has and count_indent(lined.s) > st.ind and is_cont_line(lined.s)):
+        nxt = cat(st.cur, cat(" ", lstrip(strip_comment(lined.s))))
+        {cur: nxt, n: st.n, depth: bracket_depth(nxt), out: st.out, has: True, ind: st.ind}
+    else:
+        {cur: lined.s, n: lined.n, depth: bracket_depth(strip_comment(lined.s)), out: flush_join(st), has: True, ind: count_indent(lined.s)}
+
+def join_logical(ls: List[Line]) -> List[Line]:
+    st = foldl(ls, {cur: "", n: 1, depth: 0, out: [], has: False, ind: 0}, join_one)
+    flush_join(st)
+
+def count_indent_step(st: {n: Int, done: Bool}, ch: Text) -> {n: Int, done: Bool}:
+    if st.done:
+        st
+    elif ch == " ":
+        {n: st.n + 1, done: False}
+    else:
+        {n: st.n, done: True}
+
+def count_indent(s: Text) -> Int:
+    foldl(chars(s), {n: 0, done: False}, count_indent_step).n
+
+def lstrip(s):
+    n = count_indent(s)
+    slice_text(s, n, text_len(s))
+
+def strip_comment_step(st: {inn: Bool, esc: Bool, acc: Text, stop: Bool}, ch: Text) -> {inn: Bool, esc: Bool, acc: Text, stop: Bool}:
+    if st.stop:
+        st
+    elif st.esc:
+        {inn: True, esc: False, acc: cat(st.acc, ch), stop: False}
+    elif st.inn:
+        if ch == "\\":
+            {inn: True, esc: True, acc: cat(st.acc, ch), stop: False}
+        elif ch == "\"":
+            {inn: False, esc: False, acc: cat(st.acc, ch), stop: False}
+        else:
+            {inn: True, esc: False, acc: cat(st.acc, ch), stop: False}
+    else:
+        if ch == "#":
+            {inn: False, esc: False, acc: st.acc, stop: True}
+        elif ch == "\"":
+            {inn: True, esc: False, acc: cat(st.acc, ch), stop: False}
+        else:
+            {inn: False, esc: False, acc: cat(st.acc, ch), stop: False}
+
+def strip_comment(s):
+    foldl(chars(s), {inn: False, esc: False, acc: "", stop: False}, strip_comment_step).acc
+
+def is_blank_line(s):
+    t = lstrip(s)
+    t == "" or starts_with(t, "#")
+
+def apply_indent(stack: List[Int], toks: List[Tok], indent: Int, line: Int) -> {stack: List[Int], toks: List[Tok]}:
+    top = last_of(stack)
+    if indent < top:
+        apply_indent(drop_last(stack), [*toks, mk("dedent", "", 0, line)], indent, line)
+    elif indent > top:
+        if indent != top + 4:
+            die(cat("indent ", int_to_text(line)))
+        else:
+            {stack: [*stack, indent], toks: [*toks, mk("indent", "", 0, line)]}
+    else:
+        {stack: stack, toks: toks}
+
+def read_while(s: Text, i: Int, pred: Text -> Bool) -> Int:
+    if i >= text_len(s):
+        i
+    else:
+        ch = slice_text(s, i, i + 1)
+        if pred(ch):
+            read_while(s, i + 1, pred)
+        else:
+            i
+
+def read_str(s: Text, i: Int, buf: Text) -> {v: Text, i: Int}:
+    if i >= text_len(s):
+        die("string")
+    else:
+        ch = slice_text(s, i, i + 1)
+        if ch == "\\":
+            nxt = slice_text(s, i + 1, i + 2)
+            if nxt == "n":
+                read_str(s, i + 2, cat(buf, "\n"))
+            elif nxt == "t":
+                read_str(s, i + 2, cat(buf, "\t"))
+            elif nxt == "\\":
+                read_str(s, i + 2, cat(buf, "\\"))
+            elif nxt == "\"":
+                read_str(s, i + 2, cat(buf, "\""))
+            else:
+                die("escape")
+        elif ch == "\"":
+            {v: buf, i: i + 1}
+        else:
+            read_str(s, i + 1, cat(buf, ch))
+
+def two_at(s, i):
+    slice_text(s, i, i + 2)
+
+def three_at(s, i):
+    slice_text(s, i, i + 3)
+
+def lex_line(s: Text, i: Int, line: Int, acc: List[Tok], col0: Int) -> List[Tok]:
+    if i >= text_len(s):
+        acc
+    else:
+        ch = slice_text(s, i, i + 1)
+        c = col0 + i
+        if ch == " ":
+            lex_line(s, i + 1, line, acc, col0)
+        elif ch == "#":
+            acc
+        elif is_alpha(ch):
+            j = read_while(s, i + 1, is_alnum)
+            w = slice_text(s, i, j)
+            if w == "f" and slice_text(s, j, j + 1) == "\"":
+                r = read_str(s, j + 1, "")
+                lex_line(s, r.i, line, [*acc, mkc("fstr", r.v, 0, line, c)], col0)
+            elif w == "_":
+                lex_line(s, j, line, [*acc, mkc("hole", "_", 0, line, c)], col0)
+            else:
+                lex_line(s, j, line, [*acc, mkc(word_kind(w), w, 0, line, c)], col0)
+        elif is_digit(ch):
+            j = read_while(s, i + 1, is_digit)
+            w = slice_text(s, i, j)
+            lex_line(s, j, line, [*acc, mkc("int", w, parse_int_text(w), line, c)], col0)
+        elif ch == "\"":
+            r = read_str(s, i + 1, "")
+            lex_line(s, r.i, line, [*acc, mkc("str", r.v, 0, line, c)], col0)
+        elif three_at(s, i) == "...":
+            lex_line(s, i + 3, line, [*acc, mkc("ellipsis", "...", 0, line, c)], col0)
+        elif two_at(s, i) == "->":
+            lex_line(s, i + 2, line, [*acc, mkc("arrow", "->", 0, line, c)], col0)
+        elif two_at(s, i) == "|>":
+            lex_line(s, i + 2, line, [*acc, mkc("pipe", "|>", 0, line, c)], col0)
+        elif two_at(s, i) == "==":
+            lex_line(s, i + 2, line, [*acc, mkc("eqeq", "==", 0, line, c)], col0)
+        elif two_at(s, i) == "!=":
+            lex_line(s, i + 2, line, [*acc, mkc("ne", "!=", 0, line, c)], col0)
+        elif two_at(s, i) == "<=":
+            lex_line(s, i + 2, line, [*acc, mkc("le", "<=", 0, line, c)], col0)
+        elif two_at(s, i) == ">=":
+            lex_line(s, i + 2, line, [*acc, mkc("ge", ">=", 0, line, c)], col0)
+        elif ch == "(":
+            lex_line(s, i + 1, line, [*acc, mkc("lparen", ch, 0, line, c)], col0)
+        elif ch == ")":
+            lex_line(s, i + 1, line, [*acc, mkc("rparen", ch, 0, line, c)], col0)
+        elif ch == "[":
+            lex_line(s, i + 1, line, [*acc, mkc("lbrack", ch, 0, line, c)], col0)
+        elif ch == "]":
+            lex_line(s, i + 1, line, [*acc, mkc("rbrack", ch, 0, line, c)], col0)
+        elif ch == "{":
+            lex_line(s, i + 1, line, [*acc, mkc("lbrace", ch, 0, line, c)], col0)
+        elif ch == "}":
+            lex_line(s, i + 1, line, [*acc, mkc("rbrace", ch, 0, line, c)], col0)
+        elif ch == ":":
+            lex_line(s, i + 1, line, [*acc, mkc("colon", ch, 0, line, c)], col0)
+        elif ch == ",":
+            lex_line(s, i + 1, line, [*acc, mkc("comma", ch, 0, line, c)], col0)
+        elif ch == ".":
+            lex_line(s, i + 1, line, [*acc, mkc("dot", ch, 0, line, c)], col0)
+        elif ch == "=":
+            lex_line(s, i + 1, line, [*acc, mkc("eq", ch, 0, line, c)], col0)
+        elif ch == "+":
+            lex_line(s, i + 1, line, [*acc, mkc("plus", ch, 0, line, c)], col0)
+        elif ch == "-":
+            lex_line(s, i + 1, line, [*acc, mkc("minus", ch, 0, line, c)], col0)
+        elif ch == "*":
+            lex_line(s, i + 1, line, [*acc, mkc("star", ch, 0, line, c)], col0)
+        elif ch == "/":
+            lex_line(s, i + 1, line, [*acc, mkc("slash", ch, 0, line, c)], col0)
+        elif ch == "<":
+            lex_line(s, i + 1, line, [*acc, mkc("lt", ch, 0, line, c)], col0)
+        elif ch == ">":
+            lex_line(s, i + 1, line, [*acc, mkc("gt", ch, 0, line, c)], col0)
+        else:
+            die(cat3("char ", ch, cat(" L", int_to_text(line))))
+
+def lex_physical(st: {stack: List[Int], toks: List[Tok]}, lined: Line) -> {stack: List[Int], toks: List[Tok]}:
+    raw = lined.s
+    if is_blank_line(raw):
+        st
+    else:
+        indent = count_indent(raw)
+        if indent - (indent / 4) * 4 != 0:
+            die(cat("indent4 L", int_to_text(lined.n)))
+        content = strip_comment(raw)
+        ind = apply_indent(st.stack, st.toks, indent, lined.n)
+        line_toks = lex_line(content, 0, lined.n, [], indent + 1)
+        {stack: ind.stack, toks: [*ind.toks, *line_toks, mk("nl", "", 0, lined.n)]}
+
+def close_dedents(stack: List[Int], toks: List[Tok]) -> List[Tok]:
+    if list_len(stack) <= 1:
+        toks
+    else:
+        close_dedents(drop_last(stack), [*toks, mk("dedent", "", 0, 1)])
+
+def stamp(t, file):
+    {k: t.k, v: t.v, n: t.n, line: t.line, col: t.col, file: file}
+
+def tokenize(src: Text, file: Text) -> List[Tok]:
+    st = foldl(join_logical(numbered_lines(src_lines(src))), {stack: [0], toks: []}, lex_physical)
+    map([*close_dedents(st.stack, st.toks), mk("eof", "", 0, 1)], fn(t): stamp(t, file))
+
+def snippet_toks(s):
+    [*lex_line(s, 0, 1, [], 1), mk("eof", "", 0, 1)]
+

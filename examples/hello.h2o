@@ -1,0 +1,22 @@
+# 入口長相。尚未可編譯。
+# 條件像英語；資料用 |> 自上而下。沒有方法鏈。
+
+from io import println
+from list import List
+
+type User = {name: Text, active: Bool, age: Int}
+
+def active_names(users: List[User]) -> Text:
+    users
+        |> filter(_.active)
+        |> map(_.name)
+        |> join(", ")
+
+def main() -> {IO} ():
+    users = [
+        {name: "Ada", active: True, age: 36},
+        {name: "Grace", active: False, age: 85},
+        {name: "Edsger", active: True, age: 40},
+    ]
+    if users != [] and active_names(users) != "":
+        println(f"active: {active_names(users)}")

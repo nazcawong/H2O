@@ -1,0 +1,6 @@
+# Typed 1：索引向量的穩定子集。長度在類型裡（Z／S[_]）。
+
+def main() -> {IO} ():
+    v: Vect[S[S[Z]], Text] = vect(["a", "b"])
+    if vect_len(v) == 2:
+        println("vect-ok")

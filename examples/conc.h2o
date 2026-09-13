@@ -1,0 +1,5 @@
+# v0.7 結構化並發：together 兩個任務。
+
+def main():
+    pair = conc.together(fn(): 1, fn(): 2)
+    println("together")

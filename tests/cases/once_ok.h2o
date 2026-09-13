@@ -1,0 +1,2 @@
+def drop(f: once File) -> {IO} File:
+    f

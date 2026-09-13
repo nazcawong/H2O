@@ -1,0 +1,22 @@
+# v0.3：trait / impl / HKT。Eq 來自 Prelude。
+#   ./h2o run examples/traits.h2o
+
+def contains[A: Eq](xs: List[A], x: A) -> Bool:
+    any(xs, _ == x)
+
+trait Functor[F[_]]:
+    def map[A, B](fa: F[A], f: A -> B) -> F[B]
+
+impl Functor[List]:
+    def map(xs, f):
+        match xs:
+            case []:
+                []
+            case [x, *rest]:
+                [f(x), *map(rest, f)]
+
+def main():
+    xs = [1, 2, 3]
+    ys = Functor.map(xs, fn(x): x)
+    if contains(xs, 2) and not contains(xs, 9) and ys == xs:
+        println("ok")

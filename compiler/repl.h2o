@@ -1,0 +1,325 @@
+# Interactive loop. Julia-shaped: prompt, continuation, ans is last value printed.
+# Commands are REPL-only (colon). No new language syntax.
+
+def repl_ends_with(s, suf):
+    n = text_len(s)
+    m = text_len(suf)
+    if n < m:
+        False
+    else:
+        slice_text(s, n - m, n) == suf
+
+def repl_last_nl_step(s):
+    fn(acc, i):
+        if slice_text(s, i, i + 1) == "\n":
+            i + 1
+        else:
+            acc
+
+def repl_last_nl(s):
+    foldl(range(text_len(s)), 0, repl_last_nl_step(s))
+
+def repl_last_line(s):
+    k = repl_last_nl(s)
+    slice_text(s, k, text_len(s))
+
+def repl_rstrip_nl(s):
+    n = text_len(s)
+    if n == 0:
+        s
+    else:
+        if slice_text(s, n - 1, n) == "\n":
+            slice_text(s, 0, n - 1)
+        else:
+            s
+
+def repl_blank(s):
+    lstrip(s) == ""
+
+def repl_complete(src):
+    if bracket_depth(src) > 0:
+        False
+    else:
+        body = repl_rstrip_nl(src)
+        last = repl_last_line(body)
+        if repl_blank(last) and text_len(body) > 0:
+            True
+        else:
+            t = lstrip(last)
+            if repl_ends_with(t, ":") or repl_ends_with(t, ",") or repl_ends_with(t, "|>"):
+                False
+            elif count_indent(last) > 0:
+                False
+            else:
+                True
+
+def repl_keep(s):
+    match s:
+        case DExp(e):
+            False
+        case _:
+            True
+
+def repl_kept_one(acc, s):
+    if repl_keep(s):
+        [*acc, s]
+    else:
+        acc
+
+def repl_kept(ss):
+    foldl(ss, [], repl_kept_one)
+
+def repl_last_exp(ss):
+    match last_stmt(ss):
+        case Some(s):
+            match s:
+                case DExp(e):
+                    Some(e)
+                case _:
+                    None
+        case None:
+            None
+
+def mk_print_main(e):
+    DDef({name: "main", ps: [], pts: [], body: [DExp(NCall({fun: NVar("println"), args: [e], ln: 1, cl: 1, fl: "<repl>"}))], eff: ["IO"], tot: False, once_ps: [], ret: TUnit(0), ln: 1, cl: 1, fl: "<repl>", tcs: []})
+
+def repl_exec_ss(ss) -> {IO} ():
+    check_prog(ss)
+    img = emit_bc_program(ss)
+    vm_exec(img.code, img.strs, img.fns, img.main_id)
+
+def repl_eval_exp(session, e) -> {IO} ():
+    repl_exec_ss([*session, mk_print_main(e)])
+
+def repl_try(f) -> {IO} ():
+    r = catch_die(f)
+    match r:
+        case Err(msg):
+            println(msg)
+        case Ok(z):
+            ()
+        case _:
+            ()
+
+def repl_bind(session, ss) -> {IO} List:
+    all = [*session, *ss]
+    check_prog(all)
+    println(typeof_prog(all))
+    all
+
+def repl_on_src(session, src) -> {IO} List:
+    pr = parse_program(tokenize(src, "<repl>"), 0)
+    ds = ds_stmts(pr.v)
+    match repl_last_exp(ds):
+        case Some(e):
+            keep = repl_kept(ds)
+            sess = [*session, *keep]
+            repl_eval_exp(sess, e)
+            sess
+        case None:
+            repl_bind(session, ds)
+
+def repl_cmd_t_go(session, rest) -> {IO} ():
+    if repl_blank(rest):
+        println(":t <expr>")
+    else:
+        pr = parse_program(tokenize(rest, "<repl>"), 0)
+        ds = ds_stmts(pr.v)
+        println(typeof_prog([*session, *ds]))
+
+def repl_cmd_t_thunk(session, rest) -> {IO}:
+    fn():
+        repl_cmd_t_go(session, rest)
+        0
+
+def repl_load_thunk(session, rest) -> {IO}:
+    fn(): repl_cmd_load(session, rest)
+
+def repl_on_thunk(session, src) -> {IO}:
+    fn(): repl_on_src(session, src)
+
+def repl_cmd_load(session, rest) -> {IO} List:
+    path = lstrip(rest)
+    if path == "":
+        println(":load <file.h2o or dir/>")
+        session
+    else:
+        p = resolve_pkg(path)
+        src = io.read_file(p)
+        pr = parse_program(tokenize(src, p), 0)
+        loaded = load_imps(dirname(p), pr.imps, [])
+        root = ds_stmts(pr.v)
+        ds = [*loaded.stmts, *root]
+        check_exports(root, loaded.hidden)
+        repl_bind(session, ds)
+
+def repl_is_lesson(q):
+    q == "0" or q == "1" or q == "2" or q == "3" or q == "4" or q == "5" or q == "6" or q == "7" or q == "8" or q == "9" or q == "10" or q == "11"
+
+def repl_is_learn(q):
+    repl_is_lesson(q) or q == "intro" or q == "tutorial" or q == "index" or q == "help" or q == "trait" or q == "impl" or q == "Eq" or q == "Functor" or q == "pkg" or q == "module" or q == "gc" or q == "once" or q == "Vect" or q == "wasm" or q == "native"
+
+def repl_learn_file(q):
+    if repl_is_lesson(q):
+        cat("docs/learn/", cat(q, ".txt"))
+    elif q == "trait" or q == "impl" or q == "Eq" or q == "Functor":
+        "docs/learn/9.txt"
+    elif q == "pkg" or q == "module" or q == "gc":
+        "docs/learn/10.txt"
+    elif q == "once" or q == "Vect" or q == "wasm" or q == "native":
+        "docs/learn/11.txt"
+    else:
+        "docs/learn/0.txt"
+
+def repl_show_learn(q) -> {IO} ():
+    src = io.read_file(repl_learn_file(q))
+    if src == "":
+        write_out("docs/learn is next to ./h2o; run from the H2O repo root\n")
+    else:
+        write_out(src)
+        if repl_ends_with(src, "\n"):
+            ()
+        else:
+            write_out("\n")
+
+def repl_help() -> {IO} ():
+    println("modes (Julia-shaped; line-based, no keymap)")
+    println("  h2o>     eval")
+    println("  ?        help?>   lessons 0-11 (docs/learn); or type of a name")
+    println("  ;        shell>   POSIX sh; empty line returns")
+    println("  ]        pkg>     local dirs only; no registry")
+    println("  ? 1      one-shot lesson")
+    println("  ? map    one-shot type")
+    println("  ; ls     one-shot shell")
+    println(":load f    include a file (h2o mode)")
+    println(":quit      leave (EOF too)")
+    println("indent blocks end with a blank line")
+
+def repl_help_query(session, q) -> {IO} ():
+    t = lstrip(q)
+    if t == "modes":
+        repl_help()
+    elif t == "":
+        repl_show_learn("0")
+    elif repl_is_learn(t):
+        repl_show_learn(t)
+    else:
+        repl_try(repl_cmd_t_thunk(session, t))
+
+def repl_prompt(mode, buf):
+    if buf != "":
+        "h2o| "
+    elif mode == "help":
+        "help?> "
+    elif mode == "shell":
+        "shell> "
+    elif mode == "pkg":
+        "pkg> "
+    else:
+        "h2o> "
+
+def repl_shell(cmd) -> {IO} ():
+    if repl_blank(cmd):
+        ()
+    else:
+        rc = shell_run(cmd)
+        if rc == 0:
+            ()
+        else:
+            println(cat("exit ", int_to_text(rc)))
+
+def repl_pkg_line(line) -> {IO} ():
+    println("H2O has no package registry. Packages are local directories.")
+    println("h2o vendor <git-url> [name]   copies a git tree into vendor/<name>/")
+    println(":load vendor/name/   (loads vendor/name/mod.h2o)")
+    println(":load path/mod.h2o")
+    println(":load path/          (loads path/mod.h2o)")
+
+def repl_is_quit(line):
+    line == ":quit" or line == ":q" or line == ":exit"
+
+def repl_rest(line, n):
+    slice_text(line, n, text_len(line))
+
+def repl_do_eval(session, src) -> {IO} List:
+    r = catch_die(repl_on_thunk(session, src))
+    match r:
+        case Ok(ss):
+            ss
+        case Err(msg):
+            println(msg)
+            session
+        case _:
+            session
+
+def repl_do_load(session, rest) -> {IO} List:
+    r = catch_die(repl_load_thunk(session, rest))
+    match r:
+        case Ok(ss):
+            ss
+        case Err(msg):
+            println(msg)
+            session
+        case _:
+            session
+
+def repl_loop(session, buf, mode) -> {IO} ():
+    write_out(repl_prompt(mode, buf))
+    ln = read_line()
+    match ln:
+        case None:
+            println("")
+        case Some(raw):
+            line = lstrip(raw)
+            if repl_is_quit(line):
+                ()
+            elif buf == "" and line == "?":
+                repl_help_query(session, "0")
+                repl_loop(session, "", "help")
+            elif buf == "" and line == ";":
+                repl_loop(session, "", "shell")
+            elif buf == "" and line == "]":
+                repl_pkg_line("")
+                repl_loop(session, "", "pkg")
+            elif buf == "" and starts_with(line, "? "):
+                repl_help_query(session, repl_rest(line, 2))
+                repl_loop(session, "", mode)
+            elif buf == "" and starts_with(line, ";") and line != ";":
+                repl_shell(repl_rest(line, 1))
+                repl_loop(session, "", mode)
+            elif buf == "" and starts_with(line, ":load "):
+                sess = repl_do_load(session, repl_rest(line, 6))
+                repl_loop(sess, "", mode)
+            elif buf == "" and starts_with(line, ":t "):
+                repl_try(repl_cmd_t_thunk(session, repl_rest(line, 3)))
+                repl_loop(session, "", mode)
+            elif buf == "" and mode == "help":
+                if repl_blank(line):
+                    repl_loop(session, "", "h2o")
+                else:
+                    repl_help_query(session, line)
+                    repl_loop(session, "", "help")
+            elif buf == "" and mode == "shell":
+                if repl_blank(line):
+                    repl_loop(session, "", "h2o")
+                else:
+                    repl_shell(raw)
+                    repl_loop(session, "", "shell")
+            elif buf == "" and mode == "pkg":
+                if repl_blank(line):
+                    repl_loop(session, "", "h2o")
+                else:
+                    repl_pkg_line(line)
+                    repl_loop(session, "", "pkg")
+            else:
+                nxt = cat(buf, cat(raw, "\n"))
+                if repl_complete(nxt):
+                    sess = repl_do_eval(session, nxt)
+                    repl_loop(sess, "", "h2o")
+                else:
+                    repl_loop(session, nxt, "h2o")
+
+def repl_main() -> {IO} ():
+    println("H2O  V3.1.0")
+    println("? 0-11 入門  ; shell  ] pkg")
+    repl_loop([], "", "h2o")

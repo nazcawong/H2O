@@ -1,0 +1,31 @@
+# 安全 Prelude、嚴格預設。文字不是 [Char]。部分函數不在範圍內。
+
+title: Text = "H2O"
+
+xs: List[Int] = [1, 2, 3]
+
+def first[A](xs: List[A]) -> Maybe[A]:
+    match xs:
+        case []:
+            None
+        case [x, *rest]:
+            Some(x)
+
+# 無限結構是 Stream，不是 List
+nats: Stream[Int] = Stream.iterate(0, _ + 1)
+
+squares = [x * x for x in xs if x > 0]
+
+# Typed：此定義必須窮盡且終止
+total def map_list[A, B](ys: List[A], f: A -> B) -> List[B]:
+    match ys:
+        case []:
+            []
+        case [x, *rest]:
+            [f(x), *map_list(rest, f)]
+
+def main():
+    a = first(xs)
+    b = map_list(xs, fn(n): n)
+    if squares == [1, 4, 9] and a == Some(1) and b == xs:
+        println("prelude-ok")

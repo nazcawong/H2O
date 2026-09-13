@@ -1,0 +1,31 @@
+# 效應列與處理器。宣告與解釋分開。IO 只是處理器之一。
+# 沒有 do、沒有 <-；區塊裡的 = 依類型 bind。
+
+effect State[S]:
+    def get() -> S
+    def put(s: S) -> ()
+
+effect Except[E]:
+    def throw(e: E) -> Never
+
+def count_line(path: Text) -> {State[Int], Except[Text], IO} Int:
+    n = State.get()
+    txt = io.read_file(path)
+    if txt == "":
+        Except.throw("empty file")
+    State.put(n + 1)
+    n + 1
+
+def test_count() -> Result[Int, Text]:
+    handle count_line("x.txt") with:
+        IO = fake_io("x.txt", "hello")
+        State = State.run(0)
+        Except = Except.to_result
+
+def main() -> {IO} ():
+    r = test_count()
+    match r:
+        case Ok(n):
+            println("fake-ok")
+        case Err(msg):
+            println(msg)

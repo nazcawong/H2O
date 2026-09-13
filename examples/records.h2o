@@ -1,0 +1,32 @@
+# 列紀錄與開放和型別。無頂層欄位選擇器。`.` 只做投影與模組，不是方法。
+#   ./h2o run examples/records.h2o
+
+person: {name: Text, age: Int} = {name: "Ada", age: 36}
+
+def name_of[R](p: {name: Text, ...R}) -> Text:
+    p.name
+
+grown = {person..., age: person.age + 1}
+
+moved = update person:
+    age = 37
+
+def handle_event[R](
+    e: <Click: {x: Int, y: Int}, Key: {code: Text}, ...R>,
+) -> Text:
+    match e:
+        case Click(c):
+            f"click {c.x},{c.y}"
+        case Key(k):
+            k.code
+        case _:
+            "other"
+
+def main():
+    a: {name: Text} = {name: "Ada"}
+    b: {name: Int} = {name: 1}
+    println(name_of(grown))
+    println(handle_event(Click({x: 1, y: 2})))
+    println(a.name)
+    if b.name == 1:
+        println("same-field")

@@ -1,0 +1,4 @@
+import greet
+
+def main():
+    println(hi())

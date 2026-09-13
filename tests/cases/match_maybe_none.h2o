@@ -1,0 +1,4 @@
+def f(m: Maybe[Int]) -> Int:
+    match m:
+        case Some(n):
+            n

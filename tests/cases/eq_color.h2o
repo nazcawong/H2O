@@ -1,0 +1,9 @@
+type Color:
+    Red
+    Blue
+
+def contains[A: Eq](xs: List[A], x: A) -> Bool:
+    any(xs, fn(y): y == x)
+
+def main():
+    contains([Red], Blue)

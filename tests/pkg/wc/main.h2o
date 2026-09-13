@@ -1,0 +1,11 @@
+import lib
+
+def main():
+    args = argv()
+    match args[3]:
+        case None:
+            eprint("usage: h2o run tests/pkg/wc -- file\n")
+            exit(2)
+        case Some(path):
+            src = io.read_file(path)
+            write_out(cat(int_to_text(nlines(src)), "\n"))

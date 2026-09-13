@@ -1,0 +1,2 @@
+pub def greet() -> Text:
+    "vendor-ok"

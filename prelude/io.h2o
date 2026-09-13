@@ -1,0 +1,11 @@
+# Prelude 模組 io — 介面檔，供人讀。
+# 實作由執行器提供；`import io` / `from io import println` 不載入本檔為可執行碼。
+#
+# pub def println[A](x: A) -> {IO} ()
+# pub def write_out(s: Text) -> {IO} ()
+# pub def eprint(s: Text) -> {IO} ()
+# pub def exit(n: Int) -> {IO} ()
+# pub def read_file(path: Text) -> {IO} Text
+# pub def write_file(path: Text, s: Text) -> {IO} ()
+# pub def open(path: Text) -> {IO} File
+# pub def argv() -> {IO} List[Text]

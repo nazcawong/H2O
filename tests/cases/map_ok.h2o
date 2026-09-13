@@ -1,0 +1,2 @@
+def main() -> {IO} ():
+    println(list_len(map([1, 2], fn(x): x + 1)))

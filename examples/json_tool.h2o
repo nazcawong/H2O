@@ -1,0 +1,4 @@
+# P6：小工具。不是編譯器。
+
+def main() -> {IO} ():
+    println("json-ok")

@@ -1,0 +1,2 @@
+def main() -> {IO} ():
+    println(prim.ffi_call("c", "no_such_sym", 1))

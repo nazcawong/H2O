@@ -1,0 +1,8 @@
+def g() -> {IO} ():
+    println("x")
+
+def f():
+    g()
+
+def main():
+    f()

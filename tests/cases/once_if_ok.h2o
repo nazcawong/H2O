@@ -1,0 +1,5 @@
+def drop(f: once File, b: Bool) -> {IO} File:
+    if b:
+        f
+    else:
+        f
