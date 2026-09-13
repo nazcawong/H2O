@@ -1,34 +1,33 @@
-第 8 課  練習題
-EN: Lesson 8  exercises
+Lesson 8  exercises
 
-每題在 h2o> 做。卡住就 ? 1 … ? 9。
+Do each at h2o>. Stuck? ? 1 … ? 9.
 
-A. 運算
-   寫 is_even(n)：n 能被 2 整除則 True。試 is_even(4)、is_even(5)。
+A. Arithmetic
+   Write is_even(n): True when n is divisible by 2. Try is_even(4), is_even(5).
 
-B. 列表
-   把 ["Ada", "Grace", "Edsger"] 接成一串，逗號加空格分隔。
-   （join）
+B. Lists
+   Join ["Ada", "Grace", "Edsger"] into one string, comma-space separated.
+   (join)
 
-C. 管線
+C. Pipeline
    xs = [1, 2, 3, 4, 5]
-   只留偶數，再各自 * 10。用 |> 。
+   keep the evens, then * 10 each. Use |>.
 
 D. Maybe
-   定義 first(xs)：回傳 xs[0] 這個 Maybe，不要自己拆。
-   再 match first([7, 8]) 印出 7。
+   Define first(xs): return xs[0] as that Maybe; do not unwrap it yourself.
+   Then match first([7, 8]) and print 7.
 
-E. 紀錄
-   三人名單（name、active）。印出 active 為 True 的名字，逗號分隔。
-   可對照 examples/core0_hello.h2o，或 :load examples/core0_hello.h2o
-   （檔案需要 def main，:load 後請用檔裡的函數名。）
+E. Records
+   A list of three people (name, active). Print the names where active is True, comma-separated.
+   See examples/core0_hello.h2o, or :load examples/core0_hello.h2o
+   (the file needs def main; after :load, use the names in that file.)
 
-F. 效應
-   寫 def boom() -> Int: println("no")
-   確認被拒；再寫對的 {IO} 版本。
+F. Effects
+   Write def boom() -> Int: println("no")
+   confirm it is rejected; then write a correct {IO} version.
 
 G. trait
-   寫 Functor[Maybe] 的 map，讓 Functor.map(Some(4), fn(x): x + 1)
-   得到 Some(5)。卡住就 ? 9。
+   Write Functor[Maybe] map so Functor.map(Some(4), fn(x): x + 1)
+   yields Some(5). Stuck? ? 9.
 
-做完可 ? 0 回目錄。完整程式用 ./h2o run 檔案.h2o。
+When done, ? 0 returns to the index. Full programs: ./h2o run file.h2o.

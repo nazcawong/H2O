@@ -321,5 +321,5 @@ def repl_loop(session, buf, mode) -> {IO} ():
 
 def repl_main() -> {IO} ():
     println("H2O  V3.1.0")
-    println("? 0-11 入門  ; shell  ] pkg")
+    println("? 0-11 tutorial  ; shell  ] pkg")
     repl_loop([], "", "h2o")

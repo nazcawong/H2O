@@ -54,40 +54,15 @@ Going up a layer means adding annotations, not flipping incompatible extensions.
 
 ## Documents
 
-Most of `docs/` is still Traditional Chinese. The two READMEs are the bilingual entry.
+| | English | 中文 |
+|---|---|---|
+| Index | [docs/en/index.md](docs/en/index.md) | [docs/zh-Hant/index.md](docs/zh-Hant/index.md) |
+| Language | [docs/en/language.md](docs/en/language.md) | [docs/zh-Hant/language.md](docs/zh-Hant/language.md) |
+| Status | [docs/en/status.md](docs/en/status.md) | [docs/zh-Hant/status.md](docs/zh-Hant/status.md) |
 
-| Document | Contents |
-|---|---|
-| [docs/00-principles.md](docs/00-principles.md) | Trade-offs and success criteria |
-| [docs/01-keep.md](docs/01-keep.md) | What must stay of the Haskell soul |
-| [docs/02-discard.md](docs/02-discard.md) | Defaults to drop or flip |
-| [docs/03-redesign.md](docs/03-redesign.md) | Worth keeping, harmful if copied as-is |
-| [docs/04-must-add.md](docs/04-must-add.md) | Must be in the core; cannot be faked with extensions |
-| [docs/05-engineering.md](docs/05-engineering.md) | Diagnostics, modules, metaprogramming, compilation, stdlib |
-| [docs/06-optional.md](docs/06-optional.md) | Optional layer: do not repeat extension explosion |
-| [docs/07-do-not-add.md](docs/07-do-not-add.md) | Surface features not to import from other languages |
-| [docs/08-layers.md](docs/08-layers.md) | Core / Typed / Systems report boundaries |
-| [ROADMAP.md](ROADMAP.md) | Zero to V1.0 (historical; done) |
-| [docs/compare.md](docs/compare.md) | **Status:** vs GHC / OCaml / Koka / Python / Go / Elixir / Rust |
-| [docs/13-next.md](docs/13-next.md) | After V1.0 (V1.0.1, bootstrap, proto removal: done) |
-| [docs/17-v2.md](docs/17-v2.md) | **To V2.0.0:** a language you can develop with (D0–D4, done) |
-| [docs/18-v2x.md](docs/18-v2x.md) | **To V2.5:** Typed 1 then Systems 1 (E0–E4, done) |
-| [docs/19-v3.md](docs/19-v3.md) | **V3.0.0:** `--native` emits machine code; packages stay directories |
-| [docs/20-core11.md](docs/20-core11.md) | **V3.1.0:** Core 1.1 row inference / HKT kinds / overlapping only errors |
-| [docs/15-hm.md](docs/15-hm.md) | T0–T4: HM subset (done) |
-| [docs/16-repl.md](docs/16-repl.md) | REPL: `?` tutorial (`docs/learn`); `;` shell; `]` pkg |
-| [docs/14-bootstrap.md](docs/14-bootstrap.md) | Bootstrap gates (historical B0–B5; see the top of that file for status) |
-| [docs/09-roadmap.md](docs/09-roadmap.md) | Priorities and stages (table) |
-| [docs/core/CORE-0.md](docs/core/CORE-0.md) | v0.1 Core-0 spec (implementation is no longer in proto) |
-| [docs/10-syntax.md](docs/10-syntax.md) | **Concrete syntax:** indentation, parentheses, grammar |
-| [docs/11-readability.md](docs/11-readability.md) | Readability: one thing each from Python / Elixir / Go / Haskell |
-| [docs/syntax-cheatsheet.md](docs/syntax-cheatsheet.md) | One-page cheat sheet |
-| [notes/related-languages.md](notes/related-languages.md) | Design notes from languages that already paid tuition |
-| [examples/core0_hello.h2o](examples/core0_hello.h2o) | v0.1 single-file acceptance |
-| [examples/main.h2o](examples/main.h2o) | v0.2 multi-file acceptance |
-| [examples/traits.h2o](examples/traits.h2o) | v0.3 trait / impl / HKT |
-| [examples/wc/](examples/wc/) | V2.0.0 golden tool: multi-file CLI (`pub` + directory package) |
-| [examples/count/](examples/count/) | **V2.5.0 golden tool:** `once` for files + `Vect` for fixed length |
+REPL lessons (`? 0`–`? 11`) are English: [docs/learn](docs/learn). Examples: [core0_hello](examples/core0_hello.h2o), [count](examples/count/), [wc](examples/wc/).
+
+Design notes and version gates (Chinese archive): [docs/00-principles.md](docs/00-principles.md) … [docs/20-core11.md](docs/20-core11.md).
 
 ## Tree
 
@@ -101,12 +76,14 @@ H2O/
 ├── compiler/           H2O compiler + C VM kernel + C seed
 ├── prelude/
 ├── tests/
-├── docs/
+├── docs/en/            short English docs
+├── docs/zh-Hant/       short Chinese docs
+├── docs/learn/         REPL lessons (English)
 ├── examples/
 └── notes/
 ```
 
-There is no `proto/`. The daily entry is `bin/h2o` (C bytecode VM, mark–sweep GC). Status: [docs/compare.md](docs/compare.md). Contract: [docs/core/REPORT.md](docs/core/REPORT.md). “Can develop” path (done): [docs/17-v2.md](docs/17-v2.md).
+There is no `proto/`. The daily entry is `bin/h2o`. Status: [docs/en/status.md](docs/en/status.md). Contract: [docs/core/REPORT.md](docs/core/REPORT.md).
 
 ## 30 minutes
 
@@ -119,7 +96,7 @@ There is no `proto/`. The daily entry is `bin/h2o` (C bytecode VM, mark–sweep 
 wasmtime --dir=. /tmp/count.wasm run examples/count examples/count/sample.txt
 # Packages are directories. No registry.
 # ./h2o vendor <git-url> [name]   → vendor/<name>/
-./h2o repl          # ? 0 table of contents; ? 11 once / Vect / Wasm
+./h2o repl          # ? 0 table of contents (English); ? 11 once / Vect / Wasm
 ./test
 ```
 

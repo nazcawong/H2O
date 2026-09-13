@@ -1,35 +1,34 @@
-第 11 課  once、Vect、Wasm
-EN: Lesson 11  once, Vect, Wasm
+Lesson 11  once, Vect, Wasm
 
-once：參數恰好用一次（移動）。g = f 之後不能再碰 f。
-{h: f} 也算用掉。with io.open(path) as f: 離開即關；f 在裡面最多一次。
-不是借用檢查器，沒有 lifetime。
+once: the parameter is used exactly once (a move). After g = f you must not touch f.
+{h: f} also uses it up. with io.open(path) as f: closes on leave; f at most once inside.
+Not a borrow checker, no lifetimes.
 
-Vect：長度寫在類型裡。索引是 Z 與 S[_]，不是 Vect[2, Text]。
+Vect: length lives in the type. Indices are Z and S[_], not Vect[2, Text].
 
-  vect(["a", "b"])           類型 Vect[S[S[Z]], Text]
+  vect(["a", "b"])           type Vect[S[S[Z]], Text]
   vect_cons(x, v)            Vect[n, a] -> Vect[S[n], a]
-  vect_head 只要非空；vect([]) 是類型錯誤
-  vect 只要列表字面
+  vect_head needs non-empty; vect([]) is a type error
+  vect takes list literals only
 
-Wasm：h2o build --target wasm 把同一套 VM 編成 WASI 模組。
+Wasm: h2o build --target wasm compiles the same VM to a WASI module.
 
   ./h2o build --target wasm examples/count -o /tmp/count.wasm
   wasmtime --dir=. /tmp/count.wasm run examples/count examples/count/sample.txt
 
-不是 LLVM，不是把 H2O 譯成 Wasm 指令。`--native` 發 C 函數再 cc，是機器碼；`--vm` 是解釋器。
-套件仍是本地目錄，沒有 registry。`h2o vendor <git-url> [name]` 把 git 樹拷進 `vendor/<name>/`。
+Not LLVM, not a translation of H2O into Wasm instructions. --native emits C functions then cc: machine code; --vm is the interpreter.
+Packages stay local directories; no registry. h2o vendor <git-url> [name] copies a git tree into vendor/<name>/.
 
-黃金工具（once + Vect；native／run／wasm 同一輸出）：
+Golden tool (once + Vect; native / run / wasm same output):
 
   ./h2o run examples/count examples/count/sample.txt
   ./h2o build --native examples/count -o /tmp/count
   /tmp/count run examples/count examples/count/sample.txt
 
-應印 count 3。
+Should print count 3.
 
-練習：
+Exercises:
 
-  1) 跑 examples/count，確認是 count 3
+  1) run examples/count, confirm count 3
   2) :t vect(["a", "b"])
-  3) 對 once 參數用兩次，讀「不能用兩次」
+  3) use an once parameter twice and read that it cannot be used twice

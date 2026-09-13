@@ -1,28 +1,27 @@
-第 10 課  模組、目錄套件、長跑
-EN: Lesson 10  modules, directory packages, long-running programs
+Lesson 10  modules, directory packages, long-running programs
 
-pub：檔裡一旦出現 pub，沒標的名字別的檔不能呼叫（「未匯出」）。
-沒有任何 pub 的單檔腳本，頂層名字仍全部可見。
+pub: once a file has any pub, unmarked names are not visible from other files (not exported).
+A single-file script with no pub at all still exposes every top-level name.
 
-  import greet          先試 greet.h2o，否則 greet/mod.h2o
+  import greet          try greet.h2o first, else greet/mod.h2o
   from user import active_names
-  :load path/           載入 path/mod.h2o
-  ./h2o run dir/        載入 dir/main.h2o
+  :load path/           loads path/mod.h2o
+  ./h2o run dir/        loads dir/main.h2o
 
-套件＝本地目錄。沒有遠端 registry。`h2o vendor <git-url> [name]` 把 git 樹拷進 `vendor/<name>/`，之後仍是目錄。`]` 只說明這件事。
+Packages are local directories. No remote registry. h2o vendor <git-url> [name] copies a git tree into vendor/<name>/, still a directory. ] only explains this.
 
-黃金工具（30 分鐘路徑）：
+Golden tool (30-minute path):
 
   ./h2o run examples/count examples/count/sample.txt
 
-應印 count 3。`once`／`Vect`／Wasm 見第 11 課。沒給檔則 stderr 含 usage、exit 2。
+Should print count 3. once / Vect / Wasm: lesson 11. No file: stderr contains usage, exit 2.
 
-長跑靠 GC（標記－清除）。REPL 每一輪求值結束會收。
-`h2o build --native` 發 C 函數再 cc，是機器碼（仍 tagged Val）。
-`--vm` 是解釋器映像。`--target wasm` 把同一套 VM 編成 WASI 模組，不是指令翻譯。
+Long-running programs rely on GC (mark–sweep). The REPL collects after each evaluation.
+h2o build --native emits C functions then cc: machine code (still tagged Val).
+--vm is the interpreter image. --target wasm compiles the same VM to a WASI module, not an instruction translation.
 
-練習：
+Exercises:
 
-  1) 跑 examples/wc，確認是 3
-  2) :load examples/user.h2o  再 :t active_names
-  3) 對沒標 pub 的名字從另一檔呼叫，讀「未匯出」
+  1) run examples/wc, confirm 3
+  2) :load examples/user.h2o  then :t active_names
+  3) call an unmarked name from another file and read that it is not exported

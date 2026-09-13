@@ -504,43 +504,43 @@ else
 	bad vendor "need git"
 fi
 got=$(printf '? 1\n:quit\n' | "$H2O" repl 2>"$td/err")
-if echo "$got" | grep -q "縮排"; then
+if echo "$got" | grep -q "blank line"; then
 	ok repl-learn
 else
 	bad repl-learn "out=$got"
 fi
 got=$(printf '?\n8\n:quit\n' | "$H2O" repl 2>"$td/err")
-if echo "$got" | grep -q "入門" && echo "$got" | grep -q "練習題"; then
+if echo "$got" | grep -q tutorial && echo "$got" | grep -q exercises; then
 	ok repl-learn-mode
 else
 	bad repl-learn-mode "out=$got"
 fi
 got=$(printf '? 9\n:quit\n' | "$H2O" repl 2>"$td/err")
-if echo "$got" | grep -q "第 9 課" && echo "$got" | grep -q impl; then
+if echo "$got" | grep -q "Lesson 9" && echo "$got" | grep -q impl; then
 	ok repl-learn-trait
 else
 	bad repl-learn-trait "out=$got"
 fi
 got=$(printf '? 10\n:quit\n' | "$H2O" repl 2>"$td/err")
-if echo "$got" | grep -q "第 10 課" && echo "$got" | grep -q "未匯出"; then
+if echo "$got" | grep -q "Lesson 10" && echo "$got" | grep -q "not exported"; then
 	ok repl-learn-mod
 else
 	bad repl-learn-mod "out=$got"
 fi
 got=$(printf '? trait\n:quit\n' | "$H2O" repl 2>"$td/err")
-if echo "$got" | grep -q "沒有 Eq"; then
+if echo "$got" | grep -q "no Eq"; then
 	ok repl-learn-alias
 else
 	bad repl-learn-alias "out=$got"
 fi
 got=$(printf '? 11\n:quit\n' | "$H2O" repl 2>"$td/err")
-if echo "$got" | grep -q "第 11 課" && echo "$got" | grep -q "S\\[_\\]"; then
+if echo "$got" | grep -q "Lesson 11" && echo "$got" | grep -q "S\\[_\\]"; then
 	ok repl-learn-typed
 else
 	bad repl-learn-typed "out=$got"
 fi
 got=$(printf '? wasm\n:quit\n' | "$H2O" repl 2>"$td/err")
-if echo "$got" | grep -q "WASI" && echo "$got" | grep -q "不是 LLVM"; then
+if echo "$got" | grep -q "WASI" && echo "$got" | grep -q "Not LLVM"; then
 	ok repl-learn-wasm
 else
 	bad repl-learn-wasm "out=$got"

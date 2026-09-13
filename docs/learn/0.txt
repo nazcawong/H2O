@@ -1,30 +1,27 @@
-H2O 入門（help?> 模式）
-EN: H2O tutorial (help?> mode)
+H2O tutorial (help?> mode)
 
-這門語言：含義像 Haskell（純、類型、ADT），寫起來像偽代碼。
-一件事一種寫法。沒有方法鏈，沒有 $，沒有 do。
-EN: Meaning like Haskell (purity, types, ADTs); written like pseudocode.
+Meaning like Haskell (purity, types, ADTs); written like pseudocode.
 One way to write a thing. No method chaining, no $, no do.
 
-課表——在 help?> 打數字（或在 h2o> 打 ? 1）：
+Table of contents — type a number at help?> (or ? 1 at h2o>):
 
-  0  本目錄
-  1  REPL 與第一個運算
-  2  條件：if / and / or / not
-  3  函數 def
-  4  列表與管線 |>
-  5  match 與 Maybe
-  6  紀錄（欄位用 .）
-  7  效應 {IO}
-  8  練習題
-  9  trait 與 impl
-  10 模組、目錄套件、長跑
-  11  once、Vect、Wasm
-  modes  REPL 四個提示
-  trait／impl／Eq／Functor 也進第 9 課
-  pkg／module／gc 進第 10 課
-  once／Vect／wasm／native 進第 11 課
+  0  this index
+  1  REPL and the first expression
+  2  conditionals: if / and / or / not
+  3  functions (def)
+  4  lists and pipelines |>
+  5  match and Maybe
+  6  records (fields use .)
+  7  effects {IO}
+  8  exercises
+  9  trait and impl
+  10 modules, directory packages, long-running programs
+  11 once, Vect, Wasm
+  modes  the four REPL prompts
+  trait / impl / Eq / Functor also open lesson 9
+  pkg / module / gc open lesson 10
+  once / Vect / wasm / native open lesson 11
 
-其他查詢（例如 map）印的是類型，不是課文。
-空行離開 help，回到 h2o> 做練習。
-課文在 docs/learn；請在 H2O 目錄下開 REPL。
+Other queries (for example map) print a type, not a lesson.
+A blank line leaves help and returns to h2o> for exercises.
+Lessons live in docs/learn; start the REPL from the H2O repo root.

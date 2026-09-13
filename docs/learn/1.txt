@@ -1,23 +1,22 @@
-第 1 課  REPL 與第一個運算
-EN: Lesson 1  REPL and the first expression
+Lesson 1  REPL and the first expression
 
-提示 h2o> 是求值。打完按 Enter。
-縮排區塊（def / if / match）用空行結束。
+The h2o> prompt evaluates. Press Enter when done.
+Indented blocks (def / if / match) end with a blank line.
 
-數字、文字、布林：
+Numbers, text, booleans:
 
   1 + 2
   "Ada"
   True
-  :t 1 + 2          （或 ? 1 + 2）
+  :t 1 + 2          (or ? 1 + 2)
 
-呼叫一定有括號：f(x, y)。沒有並置 f x。
-文字相接用 cat，不要用 +：
+Calls always use parentheses: f(x, y). No juxtaposition f x.
+Join text with cat, not +:
 
   cat("hello ", "Ada")
 
-練習（空行回 h2o> 再打）：
+Exercises (blank line back to h2o>, then type):
 
-  1) 算出 6 * 7
-  2) 用 cat 接出 hello Ada
-  3) :t cat("a", "b")  應看到 Text
+  1) compute 6 * 7
+  2) use cat to make hello Ada
+  3) :t cat("a", "b")  should show Text

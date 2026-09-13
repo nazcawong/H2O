@@ -1,8 +1,7 @@
-第 5 課  match 與 Maybe
-EN: Lesson 5  match and Maybe
+Lesson 5  match and Maybe
 
-沒有 null。可能沒有值就用 Maybe：Some(x) 或 None。
-match 必須寫完所有建構子（或用 _）。
+No null. A missing value is Maybe: Some(x) or None.
+match must cover every constructor (or use _).
 
   xs = [10, 20]
   match xs[0]:
@@ -11,8 +10,8 @@ match 必須寫完所有建構子（或用 _）。
       case None:
           0
 
-少寫 case None 是類型錯誤：match 沒有涵蓋 None。
-列表解構：
+Omitting case None is a type error: match does not cover None.
+List destructuring:
 
   match [1, 2, 3]:
       case []:
@@ -20,7 +19,7 @@ match 必須寫完所有建構子（或用 _）。
       case [n, *rest]:
           n
 
-練習：
+Exercises:
 
-  1) 對 [] 取 [0]，match Some / None，印 "empty" 或數字
-  2) 故意只寫 case Some，讀「沒有涵蓋 None」
+  1) index [] at [0], match Some / None, print "empty" or the number
+  2) write only case Some on purpose and read that None is not covered

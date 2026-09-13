@@ -1,23 +1,22 @@
-第 2 課  條件
-EN: Lesson 2  conditionals
+Lesson 2  conditionals
 
-and / or / not 是英文詞，不是 && || !。
-條件外面不要括號。區塊靠 4 空格。
+and / or / not are English words, not && || !.
+No parentheses around the condition. Blocks are 4 spaces.
 
   if 3 > 1 and 2 != 0:
       "yes"
   else:
       "no"
 
-錯的寫法（會被拒絕）：
+Rejected forms:
 
-  if (x):          條件不要括號
-  if x && y:       沒有 &&
+  if (x):          no parentheses on the condition
+  if x && y:       no &&
 
-elif 接在 if 後面。沒有 switch。
+elif follows if. There is no switch.
 
-練習：
+Exercises:
 
-  1) 寫一段 if：n = 4，若 n > 0 印 "pos"，否則印 "no"
-     （先 n = 4，再 if n > 0: ...  記得空行結束區塊）
-  2) 用 not True 看結果
+  1) an if: n = 4; if n > 0 print "pos", else "no"
+     (n = 4, then if n > 0: ...  remember a blank line ends the block)
+  2) try not True

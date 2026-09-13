@@ -1,10 +1,8 @@
-第 7 課  效應 {IO}
-EN: Lesson 7  effects {IO}
+Lesson 7  effects {IO}
 
-純函數不能偷偷印東西。println 需要 {IO}。
-未標註的 main 隱含 {IO}。REPL 的求值也帶 {IO}。
-呼叫有 {IO} 的函數，自己也要宣告 {IO}。
-EN: Pure functions cannot print. println needs {IO}. Unannotated main implies {IO}. Calling a `{IO}` function requires `{IO}` on the caller too.
+A pure function cannot print on the side. println needs {IO}.
+Unannotated main implies {IO}. REPL evaluation also carries {IO}.
+Calling a {IO} function requires {IO} on the caller too.
 
   def greet(n: Text) -> {IO} ():
       println(cat("hi ", n))
@@ -12,14 +10,14 @@ EN: Pure functions cannot print. println needs {IO}. Unannotated main implies {I
   def add(x, y):
       x + y
 
-add 沒有 {IO}，裡面不能 println。
-讀檔：io.read_file("path")，同樣要 {IO}。
-CLI：argv()、write_out、eprint（stderr）、exit(n)。文字請用 write_out，println 會幫 Text 加引號。
-長跑靠 GC。不要假設行程結束才回收；REPL 每輪求值結束會收。
+add has no {IO}, so it cannot println.
+Read a file with io.read_file("path"), also {IO}.
+CLI: argv(), write_out, eprint (stderr), exit(n). Use write_out for raw text; println quotes Text.
+Long-running programs rely on GC. Do not assume collection only happens at exit; the REPL collects after each evaluation.
 
-練習：
+Exercises:
 
-  1) 在 REPL 打 println("ok")
-  2) 定義沒有 {IO} 的 def silent(): println("x")
-     應看到「這裡不能用 IO」
-  3) 改成 def silent() -> {IO} (): println("x") 再呼叫
+  1) at h2o>, println("ok")
+  2) define def silent(): println("x") with no {IO}
+     it should be rejected
+  3) change to def silent() -> {IO} (): println("x") and call it

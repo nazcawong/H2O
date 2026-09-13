@@ -1,5 +1,7 @@
 # 現在的 H2O 和其他語言對比
 
+短文（給外人）：[English](en/status.md) · [中文](zh-Hant/status.md)。本文是長版檔案。
+
 日期：2026-09-13。**V3.1.0。** 這是**實作現況**，不是設計宣言。設計取捨見 [`notes/related-languages.md`](../notes/related-languages.md) 與 [`00-principles.md`](00-principles.md)。Core 1 合約見 [`core/REPORT.md`](core/REPORT.md)。
 
 **EN:** Implementation status, not a design manifesto. Design notes: [`notes/related-languages.md`](../notes/related-languages.md), [`00-principles.md`](00-principles.md). Core 1 contract: [`core/REPORT.md`](core/REPORT.md).

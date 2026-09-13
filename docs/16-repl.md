@@ -12,10 +12,10 @@ Julia 用提示切四個 mode。H2O 是整行讀入（沒有 keymap／Backspace 
 h2o> 1 + 2
 3
 h2o> ?
-H2O 入門（help?> 模式）
+H2O tutorial (help?> mode)
 ...
 help?> 1
-第 1 課  REPL 與第一個運算
+Lesson 1  REPL and the first expression
 ...
 help?> map
 List[p], (p -> q) -> List[q]
@@ -25,7 +25,7 @@ hi
 h2o>
 ```
 
-`?` 印入門目錄（`docs/learn/0.txt`）並進入 `help?>`。數字 `0`–`11`、`intro`／`tutorial`／`index`／`help` 印對應課文；`trait`／`impl`／`Eq`／`Functor` 進第 9 課；`pkg`／`module`／`gc` 進第 10 課；`once`／`Vect`／`wasm`／`native` 進第 11 課；`modes` 印四個提示的說明。其他查詢（`map`、`1 + 2`）仍是類型。`? 1`、`? 11`、`? map` 是一次性，不留下 mode。課文只寫現在能跑的語法。練習在空行回到 `h2o>` 之後做。
+`?` 印入門目錄（`docs/learn/0.txt`，英文）並進入 `help?>`。數字 `0`–`11`、`intro`／`tutorial`／`index`／`help` 印對應課文；`trait`／`impl`／`Eq`／`Functor` 進第 9 課；`pkg`／`module`／`gc` 進第 10 課；`once`／`Vect`／`wasm`／`native` 進第 11 課；`modes` 印四個提示的說明。其他查詢（`map`、`1 + 2`）仍是類型。`? 1`、`? 11`、`? map` 是一次性，不留下 mode。課文只寫現在能跑的語法。練習在空行回到 `h2o>` 之後做。
 
 | Julia | H2O |
 |---|---|

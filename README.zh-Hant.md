@@ -54,40 +54,15 @@ H2O 留下 1987–1990 年委員會真正想保住的少數核心思想，清掉
 
 ## 文件
 
-GitHub 首頁是英文 [README.md](README.md)。`docs/` 多數仍是中文。
+| | English | 中文 |
+|---|---|---|
+| 目錄 | [docs/en/index.md](docs/en/index.md) | [docs/zh-Hant/index.md](docs/zh-Hant/index.md) |
+| 語言 | [docs/en/language.md](docs/en/language.md) | [docs/zh-Hant/language.md](docs/zh-Hant/language.md) |
+| 現況 | [docs/en/status.md](docs/en/status.md) | [docs/zh-Hant/status.md](docs/zh-Hant/status.md) |
 
-| 文件 | 內容 |
-|---|---|
-| [docs/00-principles.md](docs/00-principles.md) | 取捨原則與成功標準 |
-| [docs/01-keep.md](docs/01-keep.md) | 必須保留的靈魂 |
-| [docs/02-discard.md](docs/02-discard.md) | 應捨棄或翻轉的預設 |
-| [docs/03-redesign.md](docs/03-redesign.md) | 有價值、原樣搬會帶舊病 |
-| [docs/04-must-add.md](docs/04-must-add.md) | 核心必須新增、不能再用擴充模擬 |
-| [docs/05-engineering.md](docs/05-engineering.md) | 診斷、模組、元程式、編譯、標準庫 |
-| [docs/06-optional.md](docs/06-optional.md) | 選配層：不要重蹈擴充爆炸 |
-| [docs/07-do-not-add.md](docs/07-do-not-add.md) | 明確不要從別的語言搬進來的表面功能 |
-| [docs/08-layers.md](docs/08-layers.md) | Core / Typed / Systems 報告邊界 |
-| [ROADMAP.md](ROADMAP.md) | 零到 V1.0（歷史路線，已完成） |
-| [docs/compare.md](docs/compare.md) | **現況**：和 GHC／OCaml／Koka／Python／Go／Elixir／Rust 比 |
-| [docs/13-next.md](docs/13-next.md) | V1.0 之後（V1.0.1、自舉、去 proto 已完成） |
-| [docs/17-v2.md](docs/17-v2.md) | **到 V2.0.0**：能開發的路線（D0–D4，已完成） |
-| [docs/18-v2x.md](docs/18-v2x.md) | **到 V2.5**：Typed 1 然後 Systems 1（E0–E4，已完成） |
-| [docs/19-v3.md](docs/19-v3.md) | **V3.0.0**：`--native` 發機器碼；套件仍是目錄 |
-| [docs/20-core11.md](docs/20-core11.md) | **V3.1.0**：Core 1.1 列推導／HKT kind／overlapping 只報錯 |
-| [docs/15-hm.md](docs/15-hm.md) | T0–T4：HM 子集（已完成） |
-| [docs/16-repl.md](docs/16-repl.md) | REPL：`?` 入門教學（`docs/learn`）；`;` shell；`]` pkg |
-| [docs/14-bootstrap.md](docs/14-bootstrap.md) | 自舉閘門（歷史 B0–B5；現況見文首） |
-| [docs/09-roadmap.md](docs/09-roadmap.md) | 優先序與階段（對照表） |
-| [docs/core/CORE-0.md](docs/core/CORE-0.md) | v0.1 Core-0 規格（實作已不在 proto） |
-| [docs/10-syntax.md](docs/10-syntax.md) | **具體語法**：縮排、括號規則、文法 |
-| [docs/11-readability.md](docs/11-readability.md) | 可讀性標準：Python / Elixir / Go / Haskell 各取一件 |
-| [docs/syntax-cheatsheet.md](docs/syntax-cheatsheet.md) | 一頁速查 |
-| [notes/related-languages.md](notes/related-languages.md) | 已付學費的設計筆記 |
-| [examples/core0_hello.h2o](examples/core0_hello.h2o) | v0.1 單檔驗收 |
-| [examples/main.h2o](examples/main.h2o) | v0.2 多檔驗收 |
-| [examples/traits.h2o](examples/traits.h2o) | v0.3 trait／impl／HKT |
-| [examples/wc/](examples/wc/) | V2.0.0 黃金工具：多檔 CLI（`pub` + 目錄套件） |
-| [examples/count/](examples/count/) | **V2.5.0 黃金工具**：`once` 開檔 + `Vect` 定長 |
+REPL 課文（`? 0`–`? 11`）是英文：[docs/learn](docs/learn)。示例：[core0_hello](examples/core0_hello.h2o)、[count](examples/count/)、[wc](examples/wc/)。
+
+設計筆記與版本閘門（中文檔案）：[docs/00-principles.md](docs/00-principles.md) … [docs/20-core11.md](docs/20-core11.md)。
 
 ## 目錄
 
@@ -101,12 +76,14 @@ H2O/
 ├── compiler/           H2O 編譯器 + C VM 核 + C 種子
 ├── prelude/
 ├── tests/
-├── docs/
+├── docs/en/            短英文文件
+├── docs/zh-Hant/       短中文文件
+├── docs/learn/         REPL 課文（英文）
 ├── examples/
 └── notes/
 ```
 
-沒有 `proto/`。日常入口是 `bin/h2o`（C bytecode VM，標記－清除 GC）。現況對照：[docs/compare.md](docs/compare.md)。合約：[docs/core/REPORT.md](docs/core/REPORT.md)。能開發路線（已完成）：[docs/17-v2.md](docs/17-v2.md)。
+沒有 `proto/`。日常入口是 `bin/h2o`。現況：[docs/zh-Hant/status.md](docs/zh-Hant/status.md)。合約：[docs/core/REPORT.md](docs/core/REPORT.md)。
 
 ## 30 分鐘
 
@@ -119,7 +96,7 @@ H2O/
 wasmtime --dir=. /tmp/count.wasm run examples/count examples/count/sample.txt
 # 套件＝目錄。沒有 registry。
 # ./h2o vendor <git-url> [name]   → vendor/<name>/
-./h2o repl          # ? 0 課表；? 11 once／Vect／Wasm
+./h2o repl          # ? 0 課表（英文）；? 11 once／Vect／Wasm
 ./test
 ```
 
