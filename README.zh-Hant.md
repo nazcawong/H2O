@@ -33,25 +33,6 @@ H2O 留下 1987–1990 年委員會真正想保住的少數核心思想，清掉
 
 現存語言已付過學費：PureScript、Idris 2、Unison、Roc、Koka、OCaml 5。它們不是對手，是設計筆記。
 
-## 語言分層
-
-用三層穩定報告取代「GHC2024 + 二十個 pragma」：
-
-| 層 | 內容 | 怎麼用 |
-|---|---|---|
-| **Core** | 純、嚴格預設、ADT、模式比對、HM + HKT、類型類、效應列、列紀錄、安全 Prelude | 預設。多數程式停在這裡 |
-| **Typed** | 線性／仿射、索引／依賴子集、總性註解、可視量化 | 自願加註解，不是另一個方言 |
-| **Systems** | 原生表示、未提升型別、FFI、線性緩衝、後端原語 | 執行期與互操作 |
-
-往上走是加註解，不是打開不相容擴充。
-
-## 若只能做四件
-
-1. **效應系統入核心**——消滅最常見的架構痛
-2. **列紀錄／開放和型別**——消滅最常見的日常痛
-3. **嚴格預設 + 安全文字／Prelude**——消滅最常見的執行時痛
-4. **線性資源 + 實用依賴類型**——讓「非法狀態不可表示」成為常規工具
-
 ## 文件
 
 | | English | 中文 |
@@ -63,27 +44,6 @@ H2O 留下 1987–1990 年委員會真正想保住的少數核心思想，清掉
 REPL 課文（`? 0`–`? 11`）是英文：[docs/learn](docs/learn)。示例：[core0_hello](examples/core0_hello.h2o)、[count](examples/count/)、[wc](examples/wc/)。
 
 設計筆記與版本閘門（中文檔案）：[docs/00-principles.md](docs/00-principles.md) … [docs/20-core11.md](docs/20-core11.md)。
-
-## 目錄
-
-```
-H2O/
-├── README.md           English
-├── README.zh-Hant.md   繁體中文
-├── ROADMAP.md          零到 V1.0（歷史）
-├── h2o                 POSIX 包裝：exec bin/h2o
-├── test                POSIX 測試架（不靠 Python）
-├── compiler/           H2O 編譯器 + C VM 核 + C 種子
-├── prelude/
-├── tests/
-├── docs/en/            短英文文件
-├── docs/zh-Hant/       短中文文件
-├── docs/learn/         REPL 課文（英文）
-├── examples/
-└── notes/
-```
-
-沒有 `proto/`。日常入口是 `bin/h2o`。現況：[docs/zh-Hant/status.md](docs/zh-Hant/status.md)。合約：[docs/core/REPORT.md](docs/core/REPORT.md)。
 
 ## 30 分鐘
 

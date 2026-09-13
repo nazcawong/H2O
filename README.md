@@ -33,25 +33,6 @@ Laziness stays **as a capability**. What should change is “lazy by default eve
 
 Languages that already paid tuition: PureScript, Idris 2, Unison, Roc, Koka, OCaml 5. They are not rivals; they are design notes.
 
-## Layers
-
-Three stable reports instead of “GHC2024 + twenty pragmas”:
-
-| Layer | Contents | How you use it |
-|---|---|---|
-| **Core** | Pure, strict default, ADTs, pattern matching, HM + HKT, type classes, effect rows, row records, a safe Prelude | Default. Most programs stay here |
-| **Typed** | Linear / affine, indexed / dependent subset, totality annotations, visible quantification | Opt-in annotations, not another dialect |
-| **Systems** | Native representation, unlifted types, FFI, linear buffers, backend primitives | Runtime and interop |
-
-Going up a layer means adding annotations, not flipping incompatible extensions.
-
-## If you can only do four things
-
-1. **Effects in the core** — kill the most common architecture pain
-2. **Row records / open sums** — kill the most common everyday pain
-3. **Strict default + safe text / Prelude** — kill the most common runtime pain
-4. **Linear resources + practical dependent types** — make “illegal states unrepresentable” a normal tool
-
 ## Documents
 
 | | English | 中文 |
@@ -63,27 +44,6 @@ Going up a layer means adding annotations, not flipping incompatible extensions.
 REPL lessons (`? 0`–`? 11`) are English: [docs/learn](docs/learn). Examples: [core0_hello](examples/core0_hello.h2o), [count](examples/count/), [wc](examples/wc/).
 
 Design notes and version gates (Chinese archive): [docs/00-principles.md](docs/00-principles.md) … [docs/20-core11.md](docs/20-core11.md).
-
-## Tree
-
-```
-H2O/
-├── README.md           English
-├── README.zh-Hant.md   Traditional Chinese
-├── ROADMAP.md          zero to V1.0 (historical)
-├── h2o                 POSIX wrapper: exec bin/h2o
-├── test                POSIX test harness (no Python)
-├── compiler/           H2O compiler + C VM kernel + C seed
-├── prelude/
-├── tests/
-├── docs/en/            short English docs
-├── docs/zh-Hant/       short Chinese docs
-├── docs/learn/         REPL lessons (English)
-├── examples/
-└── notes/
-```
-
-There is no `proto/`. The daily entry is `bin/h2o`. Status: [docs/en/status.md](docs/en/status.md). Contract: [docs/core/REPORT.md](docs/core/REPORT.md).
 
 ## 30 minutes
 
