@@ -8,6 +8,12 @@
 #ifndef __wasi__
 #include <setjmp.h>
 #endif
+#if !defined(__wasi__) && !defined(_WIN32)
+#include <unistd.h>
+#include <termios.h>
+#include <dirent.h>
+#include <errno.h>
+#endif
 #if defined(_WIN32) || defined(__wasi__)
 #else
 #include <dlfcn.h>
@@ -140,6 +146,341 @@ static Val V_F(Val (*f)(Val)){ Val v=V_U(); v.k=K_F; v.fn1=f; return v; }
 static Val V_CTOR(const char *tag, int n, Val *xs){
     Val v=V_U(); v.k=K_C; v.c=gc_malloc(sizeof(Ctor), GK_CTOR);
     v.c->tag=tag?tag:""; v.c->n=n; v.c->xs=xs; return v;
+}
+
+#define H2O_HIST_MAX 500
+#define H2O_LINE_MAX 4096
+static char *h2o_hist[H2O_HIST_MAX];
+static int h2o_hist_n, h2o_hist_loaded;
+static char h2o_prompt[128];
+static char **h2o_sess;
+static int h2o_sess_n;
+#if !defined(__wasi__) && !defined(_WIN32)
+static struct termios h2o_told;
+static int h2o_raw;
+static void h2o_tty_restore(void){
+    if(h2o_raw){ tcsetattr(0, TCSANOW, &h2o_told); h2o_raw=0; }
+}
+static int h2o_tty_raw(void){
+    if(tcgetattr(0, &h2o_told)) return -1;
+    struct termios t=h2o_told;
+    t.c_lflag &= (tcflag_t)~(ICANON|ECHO|ISIG);
+    t.c_cc[VMIN]=1; t.c_cc[VTIME]=0;
+    if(tcsetattr(0, TCSANOW, &t)) return -1;
+    h2o_raw=1; return 0;
+}
+#endif
+static void h2o_hist_path(char *d, size_t dn, char *f, size_t fn){
+    const char *h=getenv("HOME");
+    if(!h || !h[0]){ d[0]=0; f[0]=0; return; }
+    snprintf(d, dn, "%s/.h2o", h);
+    snprintf(f, fn, "%s/.h2o/history", h);
+}
+static void h2o_hist_load(void){
+    if(h2o_hist_loaded) return;
+    h2o_hist_loaded=1;
+    char dir[512], path[512];
+    h2o_hist_path(dir, sizeof dir, path, sizeof path);
+    if(!path[0]) return;
+    FILE *fp=fopen(path, "r");
+    if(!fp) return;
+    char line[H2O_LINE_MAX];
+    while(h2o_hist_n<H2O_HIST_MAX && fgets(line, sizeof line, fp)){
+        size_t n=strlen(line);
+        while(n && (line[n-1]=='\n' || line[n-1]=='\r')) line[--n]=0;
+        if(!n) continue;
+        h2o_hist[h2o_hist_n]=malloc(n+1);
+        if(!h2o_hist[h2o_hist_n]) break;
+        memcpy(h2o_hist[h2o_hist_n], line, n+1);
+        h2o_hist_n++;
+    }
+    fclose(fp);
+}
+static void h2o_hist_save(void){
+    char dir[512], path[512];
+    h2o_hist_path(dir, sizeof dir, path, sizeof path);
+    if(!path[0]) return;
+    if(dir[0]) mkdir(dir, 0700);
+    FILE *fp=fopen(path, "w");
+    if(!fp) return;
+    for(int i=0;i<h2o_hist_n;i++) if(h2o_hist[i]) fprintf(fp, "%s\n", h2o_hist[i]);
+    fclose(fp);
+#if !defined(__wasi__) && !defined(_WIN32)
+    chmod(path, 0600);
+#endif
+}
+static void h2o_hist_add(const char *s){
+    if(!s || !s[0]) return;
+    if(h2o_hist_n>0 && h2o_hist[h2o_hist_n-1] && strcmp(h2o_hist[h2o_hist_n-1], s)==0) return;
+    char *c=malloc(strlen(s)+1);
+    if(!c) return;
+    strcpy(c, s);
+    if(h2o_hist_n==H2O_HIST_MAX){
+        free(h2o_hist[0]);
+        memmove(h2o_hist, h2o_hist+1, (H2O_HIST_MAX-1)*sizeof(char*));
+        h2o_hist_n--;
+    }
+    h2o_hist[h2o_hist_n++]=c;
+    h2o_hist_save();
+}
+static void h2o_line_draw(int oldc, int oldn, const char *buf, int n, int cur){
+    int i;
+    for(i=0;i<oldc;i++) fputc('\b', stdout);
+    if(n) fwrite(buf, 1, (size_t)n, stdout);
+    int extra=oldn-n;
+    if(extra<0) extra=0;
+    for(i=0;i<extra;i++) fputc(' ', stdout);
+    for(i=0;i<extra;i++) fputc('\b', stdout);
+    for(i=0;i<n-cur;i++) fputc('\b', stdout);
+    fflush(stdout);
+}
+static int h2o_word_start(const char *buf, int cur){
+    int i=cur;
+    while(i>0 && buf[i-1]!=' ' && buf[i-1]!='\t') i--;
+    return i;
+}
+static int h2o_pref_ok(const char *s, const char *p, int pn){
+    return (int)strlen(s)>=pn && strncmp(s, p, (size_t)pn)==0;
+}
+static void h2o_cmp_add(char **xs, int *n, const char *s, const char *p, int pn){
+    if(*n>=256) return;
+    if(!h2o_pref_ok(s, p, pn)) return;
+    for(int i=0;i<*n;i++) if(strcmp(xs[i], s)==0) return;
+    xs[*n]=malloc(strlen(s)+1);
+    if(!xs[*n]) return;
+    strcpy(xs[*n], s);
+    (*n)++;
+}
+static void h2o_cmp_paths(char **xs, int *n, const char *pref){
+#if !defined(__wasi__) && !defined(_WIN32)
+    char dir[1024], base[256];
+    const char *sl=strrchr(pref, '/');
+    if(sl){
+        size_t dn=(size_t)(sl-pref);
+        if(dn>=sizeof dir) return;
+        memcpy(dir, pref, dn); dir[dn]=0;
+        if(!dir[0]) strcpy(dir, "/");
+        snprintf(base, sizeof base, "%s", sl+1);
+    } else {
+        strcpy(dir, ".");
+        snprintf(base, sizeof base, "%s", pref);
+    }
+    DIR *d=opendir(dir);
+    if(!d) return;
+    struct dirent *e;
+    while((e=readdir(d))){
+        if(e->d_name[0]=='.' && (!base[0] || base[0]!='.')) continue;
+        if(!h2o_pref_ok(e->d_name, base, (int)strlen(base))) continue;
+        char show[1200];
+        if(sl){
+            if(dir[0]=='/' && !dir[1]) snprintf(show, sizeof show, "/%s", e->d_name);
+            else snprintf(show, sizeof show, "%s/%s", dir, e->d_name);
+        } else snprintf(show, sizeof show, "%s", e->d_name);
+        char stpath[1200];
+        if(sl) snprintf(stpath, sizeof stpath, "%s/%s", dir, e->d_name);
+        else snprintf(stpath, sizeof stpath, "%s", e->d_name);
+        struct stat st;
+        if(stat(stpath, &st)==0 && S_ISDIR(st.st_mode)){
+            size_t L=strlen(show);
+            if(L+2<sizeof show){ show[L]='/'; show[L+1]=0; }
+        }
+        h2o_cmp_add(xs, n, show, pref, (int)strlen(pref));
+    }
+    closedir(d);
+#else
+    (void)xs; (void)n; (void)pref;
+#endif
+}
+static const char *h2o_kw[]={
+    "def","if","elif","else","match","case","type","trait","impl","fn",
+    "pub","import","from","not","and","or","total","with","handle",
+    "map","filter","foldl","join","println","cat","range",
+    ":t",":load",":quit",":q",":exit",
+    0
+};
+static void h2o_complete(char *buf, int *n, int *cur){
+    int ws, pn, i, m=0;
+    char *xs[256];
+    char pref[H2O_LINE_MAX];
+    if(strncmp(buf, ":load ", 6)==0 || strncmp(buf, ":load\t", 6)==0){
+        const char *p=buf+6;
+        while(*p==' ') p++;
+        h2o_cmp_paths(xs, &m, p);
+        ws=(int)(p-buf);
+        pn=*n-ws;
+        if(pn<0) pn=0;
+    } else {
+        ws=h2o_word_start(buf, *cur);
+        pn=*cur-ws;
+        if(pn<0) pn=0;
+        if(pn>=H2O_LINE_MAX) pn=H2O_LINE_MAX-1;
+        memcpy(pref, buf+ws, (size_t)pn); pref[pn]=0;
+        if(ws==0 && pref[0]==':'){
+            for(i=0;h2o_kw[i];i++) if(h2o_kw[i][0]==':') h2o_cmp_add(xs, &m, h2o_kw[i], pref, pn);
+        } else {
+            for(i=0;h2o_kw[i];i++) if(h2o_kw[i][0]!=':') h2o_cmp_add(xs, &m, h2o_kw[i], pref, pn);
+            for(i=0;i<h2o_sess_n;i++) h2o_cmp_add(xs, &m, h2o_sess[i], pref, pn);
+        }
+    }
+    if(m==1){
+        const char *s=xs[0];
+        int sl=(int)strlen(s);
+        int tail=*n-*cur;
+        if(ws+sl+tail+1<H2O_LINE_MAX){
+            memmove(buf+ws+sl, buf+*cur, (size_t)tail);
+            memcpy(buf+ws, s, (size_t)sl);
+            *n=ws+sl+tail;
+            *cur=ws+sl;
+            buf[*n]=0;
+        }
+    } else if(m>1){
+        fputc('\n', stdout);
+        for(i=0;i<m;i++){
+            fputs(xs[i], stdout);
+            fputc(i==m-1?'\n':' ', stdout);
+        }
+        fputs(h2o_prompt, stdout);
+        fwrite(buf, 1, (size_t)*n, stdout);
+        for(i=0;i<*n-*cur;i++) fputc('\b', stdout);
+        fflush(stdout);
+    }
+    for(i=0;i<m;i++) free(xs[i]);
+}
+#if !defined(__wasi__) && !defined(_WIN32)
+static int h2o_tty_line(char *buf, int cap){
+    int n=0, cur=0, oldn=0, oldc=0, hist_i, saved_set=0;
+    char saved[H2O_LINE_MAX];
+    unsigned char c;
+    buf[0]=0;
+    hist_i=h2o_hist_n;
+    h2o_hist_load();
+    hist_i=h2o_hist_n;
+    if(h2o_tty_raw()) return -1;
+    for(;;){
+        ssize_t r=read(0, &c, 1);
+        if(r<=0){ h2o_tty_restore(); return 0; }
+        if(c=='\r' || c=='\n'){
+            fputc('\n', stdout); fflush(stdout);
+            buf[n]=0;
+            h2o_tty_restore();
+            h2o_hist_add(buf);
+            return 1;
+        }
+        if(c==3){ /* Ctrl-C: clear line, stay in REPL */
+            h2o_line_draw(cur, n, "", 0, 0);
+            n=0; cur=0; buf[0]=0; oldn=0; oldc=0;
+            continue;
+        }
+        if(c==4){ /* Ctrl-D */
+            if(n==0){ h2o_tty_restore(); return 0; }
+            if(cur<n){ memmove(buf+cur, buf+cur+1, (size_t)(n-cur)); n--; buf[n]=0;
+                h2o_line_draw(oldc, oldn, buf, n, cur); oldn=n; oldc=cur; }
+            continue;
+        }
+        if(c==1){ cur=0; h2o_line_draw(oldc, oldn, buf, n, cur); oldc=cur; continue; } /* Ctrl-A */
+        if(c==5){ cur=n; h2o_line_draw(oldc, oldn, buf, n, cur); oldc=cur; continue; } /* Ctrl-E */
+        if(c==21){ /* Ctrl-U */
+            memmove(buf, buf+cur, (size_t)(n-cur)+1);
+            n-=cur; cur=0;
+            h2o_line_draw(oldc, oldn, buf, n, cur); oldn=n; oldc=cur;
+            continue;
+        }
+        if(c==127 || c==8){
+            if(cur>0){
+                memmove(buf+cur-1, buf+cur, (size_t)(n-cur)+1);
+                cur--; n--;
+                h2o_line_draw(oldc, oldn, buf, n, cur); oldn=n; oldc=cur;
+            }
+            continue;
+        }
+        if(c==9){ /* Tab */
+            buf[n]=0;
+            h2o_complete(buf, &n, &cur);
+            h2o_line_draw(oldc, oldn, buf, n, cur); oldn=n; oldc=cur;
+            continue;
+        }
+        if(c==27){
+            unsigned char s[4];
+            if(read(0, s, 1)!=1) continue;
+            unsigned char k=s[0];
+            if(k=='[' || k=='O'){
+                if(read(0, s, 1)!=1) continue;
+                k=s[0];
+                if(k=='3'){ /* delete ~ */
+                    unsigned char t;
+                    read(0, &t, 1);
+                    if(cur<n){
+                        memmove(buf+cur, buf+cur+1, (size_t)(n-cur));
+                        n--; buf[n]=0;
+                        h2o_line_draw(oldc, oldn, buf, n, cur); oldn=n; oldc=cur;
+                    }
+                    continue;
+                }
+                if(k=='A'){ /* up */
+                    if(!saved_set){ memcpy(saved, buf, (size_t)n); saved[n]=0; saved_set=1; }
+                    if(hist_i>0){
+                        hist_i--;
+                        strncpy(buf, h2o_hist[hist_i]?h2o_hist[hist_i]:"", (size_t)cap-1);
+                        buf[cap-1]=0; n=(int)strlen(buf); if(n>=cap) n=cap-1; cur=n;
+                        h2o_line_draw(oldc, oldn, buf, n, cur); oldn=n; oldc=cur;
+                    }
+                    continue;
+                }
+                if(k=='B'){ /* down */
+                    if(hist_i<h2o_hist_n) hist_i++;
+                    if(hist_i>=h2o_hist_n){
+                        if(saved_set){ strncpy(buf, saved, (size_t)cap-1); buf[cap-1]=0; n=(int)strlen(buf); }
+                        else { n=0; buf[0]=0; }
+                        cur=n;
+                    } else {
+                        strncpy(buf, h2o_hist[hist_i]?h2o_hist[hist_i]:"", (size_t)cap-1);
+                        buf[cap-1]=0; n=(int)strlen(buf); cur=n;
+                    }
+                    h2o_line_draw(oldc, oldn, buf, n, cur); oldn=n; oldc=cur;
+                    continue;
+                }
+                if(k=='C'){ if(cur<n) cur++; h2o_line_draw(oldc, oldn, buf, n, cur); oldc=cur; continue; }
+                if(k=='D'){ if(cur>0) cur--; h2o_line_draw(oldc, oldn, buf, n, cur); oldc=cur; continue; }
+                if(k=='H'){ cur=0; h2o_line_draw(oldc, oldn, buf, n, cur); oldc=cur; continue; }
+                if(k=='F'){ cur=n; h2o_line_draw(oldc, oldn, buf, n, cur); oldc=cur; continue; }
+            }
+            continue;
+        }
+        if(c<32) continue;
+        if(n+1>=cap) continue;
+        memmove(buf+cur+1, buf+cur, (size_t)(n-cur));
+        buf[cur]=(char)c; n++; cur++; buf[n]=0;
+        h2o_line_draw(oldc, oldn, buf, n, cur); oldn=n; oldc=cur;
+    }
+}
+#endif
+static int h2o_read_line(char *buf, int cap){
+    buf[0]=0;
+#if !defined(__wasi__) && !defined(_WIN32)
+    if(isatty(0)){
+        int ok=h2o_tty_line(buf, cap);
+        if(ok>=0) return ok;
+    }
+#endif
+    if(!fgets(buf, cap, stdin)) return 0;
+    size_t n=strlen(buf);
+    if(n && buf[n-1]=='\n') buf[--n]=0;
+    if(n && buf[n-1]=='\r') buf[--n]=0;
+    return 1;
+}
+static void h2o_set_names(Val v){
+    int i;
+    for(i=0;i<h2o_sess_n;i++) free(h2o_sess[i]);
+    free(h2o_sess); h2o_sess=0; h2o_sess_n=0;
+    if(v.k!=K_L || !v.l) return;
+    h2o_sess=calloc((size_t)v.l->n+1, sizeof(char*));
+    if(!h2o_sess) return;
+    for(i=0;i<v.l->n;i++){
+        if(v.l->xs[i].k==K_T && v.l->xs[i].s){
+            h2o_sess[h2o_sess_n]=malloc(strlen(v.l->xs[i].s)+1);
+            if(h2o_sess[h2o_sess_n]){ strcpy(h2o_sess[h2o_sess_n], v.l->xs[i].s); h2o_sess_n++; }
+        }
+    }
 }
 static Val V_CLO(int fn_id, int ncap, Val *caps){
     Val v=V_U(); v.k=K_F; v.fn_id=fn_id; v.ncap=ncap; v.caps=caps; return v;
@@ -345,7 +686,8 @@ enum {
     BI_CHMOD_X, BI_SET_DIAG, BI_CAP_START, BI_CAP_TAKE, BI_HEX_ESC,
     BI_READ_LINE, BI_CATCH_DIE, BI_WRITE_OUT, BI_SHELL,
     BI_WRITE_ERR, BI_EXIT, BI_GC,
-    BI_VECT_CONS, BI_VECT_HEAD
+    BI_VECT_CONS, BI_VECT_HEAD,
+    BI_REPL_TTY, BI_REPL_NAMES, BI_REPL_PROMPT
 };
 
 #define VM_STACK 8192
@@ -600,16 +942,27 @@ static Val h2o_do_builtin(int id, Val *a, int arity){
             } break;
             case BI_READ_LINE: {
                 fflush(stdout);
-                char buf[4096];
-                if(!fgets(buf, sizeof buf, stdin)) r=V_CTOR("None", 0, 0);
+                char buf[H2O_LINE_MAX];
+                if(!h2o_read_line(buf, sizeof buf)) r=V_CTOR("None", 0, 0);
                 else {
-                    size_t n=strlen(buf);
-                    if(n && buf[n-1]=='\n') buf[--n]=0;
-                    if(n && buf[n-1]=='\r') buf[--n]=0;
                     Val *xs=gc_vals(1);
                     xs[0]=V_T(buf);
                     r=V_CTOR("Some", 1, xs);
                 }
+            } break;
+            case BI_REPL_TTY:
+#if !defined(__wasi__) && !defined(_WIN32)
+                r=V_B(isatty(0)?1:0);
+#else
+                r=V_B(0);
+#endif
+                break;
+            case BI_REPL_NAMES:
+                h2o_set_names(a[0]); r=V_U(); break;
+            case BI_REPL_PROMPT: {
+                const char *s=a[0].k==K_T&&a[0].s? a[0].s:"";
+                snprintf(h2o_prompt, sizeof h2o_prompt, "%s", s);
+                r=V_U();
             } break;
             case BI_WRITE_OUT: {
                 const char *s=a[0].k==K_T&&a[0].s? a[0].s : "";

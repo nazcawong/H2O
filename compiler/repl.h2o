@@ -183,7 +183,7 @@ def repl_show_learn(q) -> {IO} ():
             write_out("\n")
 
 def repl_help() -> {IO} ():
-    println("modes (Julia-shaped; line-based, no keymap)")
+    println("modes (Julia-shaped)")
     println("  h2o>     eval")
     println("  ?        help?>   lessons 0-11 (docs/learn); or type of a name")
     println("  ;        shell>   POSIX sh; empty line returns")
@@ -194,6 +194,7 @@ def repl_help() -> {IO} ():
     println(":load f    include a file (h2o mode)")
     println(":quit      leave (EOF too)")
     println("indent blocks end with a blank line")
+    println("TTY: Up/Down history, Left/Right edit, Tab completes a word")
 
 def repl_help_query(session, q) -> {IO} ():
     t = lstrip(q)
@@ -263,9 +264,34 @@ def repl_do_load(session, rest) -> {IO} List:
         case _:
             session
 
+def repl_stmt_name(s):
+    match s:
+        case DDef(w):
+            w.name
+        case DLet(w):
+            w.name
+        case _:
+            ""
+
+def repl_names_acc(acc, s):
+    n = repl_stmt_name(s)
+    if n == "":
+        acc
+    else:
+        [*acc, n]
+
+def repl_session_names(ss):
+    foldl(ss, [], repl_names_acc)
+
+def repl_getline(session, mode, buf) -> {IO} Maybe:
+    p = repl_prompt(mode, buf)
+    repl_set_prompt(p)
+    repl_set_names(repl_session_names(session))
+    write_out(p)
+    read_line()
+
 def repl_loop(session, buf, mode) -> {IO} ():
-    write_out(repl_prompt(mode, buf))
-    ln = read_line()
+    ln = repl_getline(session, mode, buf)
     match ln:
         case None:
             println("")
@@ -319,7 +345,15 @@ def repl_loop(session, buf, mode) -> {IO} ():
                 else:
                     repl_loop(session, nxt, "h2o")
 
+def repl_drop() -> Text:
+    join(["              /\\\n", "             /  \\\n", "            /    \\\n", "           /      \\\n", "          /  H2O   \\\n", "          \\        /\n", "           \\      /\n", "            \\    /\n", "             \\  /\n", "              \\/\n"], "")
+
 def repl_main() -> {IO} ():
-    println("H2O  V3.1.0")
-    println("? 0-11 tutorial  ; shell  ] pkg")
+    if repl_is_tty():
+        write_out(repl_drop())
+        println("           V3.1.0")
+        println("      ? 0-11  ; shell  ] pkg")
+    else:
+        println("H2O  V3.1.0")
+        println("? 0-11 tutorial  ; shell  ] pkg")
     repl_loop([], "", "h2o")

@@ -2,7 +2,7 @@
 
 日期：2026-09-12。Core 1 凍結，不開語法。模式切換只活在 REPL 裡，不是語言的一部分。
 
-Julia 用提示切四個 mode。H2O 是整行讀入（沒有 keymap／Backspace 改提示），所以：
+Julia 用提示切四個 mode。H2O 在 **TTY** 上有行編輯（↑↓ 歷史、←→、Tab 補當前詞）；非 TTY（測試、pipe）仍整行讀入。離開 mode 用空行（Julia 是提示開頭按 Backspace）：
 
 - 空提示打 `?`／`;`／`]` 進入該 mode（下一輪提示換成 `help?>`／`shell>`／`pkg>`）
 - 同一行 `? map`、`; ls` 是一次性，不留下 mode
@@ -34,6 +34,7 @@ h2o>
 | `;` → `shell>` | POSIX `sh -c` |
 | `]` → `pkg>` | **沒有套件註冊中心**；`h2o vendor` 把 git 樹變成目錄；`:load path/` 載入 `path/mod.h2o` |
 | Backspace 回 Julian | 空行回 `h2o>` |
-| `ans`、tab、歷史搜尋 | 不做 |
+| 行編輯 | TTY：↑↓ 歷史（`~/.h2o/history`）、←→、Tab 前綴補全 |
+| `ans`、Ctrl-R、LSP | 不做 |
 
 `h2o>` 裡仍可 `:t e`、`:load f`、`:quit`。無參數的 `./h2o` 進 REPL。課文路徑相對工作目錄，請在倉庫根目錄開 REPL。

@@ -62,4 +62,4 @@ p.name
 
 `h2o run` · `h2o check` · `h2o fmt`（只清行尾空白，不是排版器）· `h2o build --native` · `h2o build --vm` · `h2o build --target wasm` · `h2o vendor` · `h2o repl`
 
-REPL：`?` 課文、`;` shell、`]` 套件（只有目錄）。課文是英文（`docs/learn`）。
+REPL：`?` 課文、`;` shell、`]` 套件（只有目錄）。課文是英文（`docs/learn`）。真終端：↑↓ 歷史（`~/.h2o/history`）、←→ 編輯、Tab 補當前詞（`:load`、關鍵字、session 名字）。啟動印水滴包住 `H2O`。

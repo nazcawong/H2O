@@ -27,7 +27,7 @@ def call_lab(w):
                 case _:
                     ""
         case NVar(s):
-            if s == "println" or s == "argv" or s == "eprint" or s == "exit" or s == "write_out":
+            if s == "println" or s == "argv" or s == "eprint" or s == "exit" or s == "write_out" or s == "read_line" or s == "repl_is_tty" or s == "repl_set_names" or s == "repl_set_prompt":
                 "IO"
             else:
                 ""

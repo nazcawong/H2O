@@ -62,4 +62,4 @@ Never: GHC compatibility, `$`, juxtaposition, method chains, custom infix, a pac
 
 `h2o run` · `h2o check` · `h2o fmt` (strip trailing space, not a pretty-printer) · `h2o build --native` · `h2o build --vm` · `h2o build --target wasm` · `h2o vendor` · `h2o repl`
 
-REPL: `?` lessons, `;` shell, `]` packages (directories only). Lessons are English (`docs/learn`).
+REPL: `?` lessons, `;` shell, `]` packages (directories only). Lessons are English (`docs/learn`). On a TTY: Up/Down history (`~/.h2o/history`), Left/Right edit, Tab completes the current word (`:load`, keywords, session names). Startup prints a water-drop logo around `H2O`.

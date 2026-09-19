@@ -703,6 +703,15 @@ def b_shell_run(st):
 def b_read_line(st):
     add_poly(st, "read_line", [], mk_fun([], TMaybe({a: TText(0)}), ["IO"]))
 
+def b_repl_is_tty(st):
+    add_poly(st, "repl_is_tty", [], mk_fun([], TBool(0), ["IO"]))
+
+def b_repl_set_names(st):
+    add_poly(st, "repl_set_names", [], mk_fun([TList({a: TText(0)})], TUnit(0), ["IO"]))
+
+def b_repl_set_prompt(st):
+    add_poly(st, "repl_set_prompt", [], mk_fun([TText(0)], TUnit(0), ["IO"]))
+
 def b_catch_die(st):
     r = tv1(st)
     add_poly(r.st, "catch_die", [r.ia], mk_fun([mk_fun([], r.a, ["IO"])], TResult({a: r.a, e: TText(0)}), ["IO"]))
@@ -748,6 +757,9 @@ def add_builtins(st):
     s = b_write_out(s)
     s = b_shell_run(s)
     s = b_read_line(s)
+    s = b_repl_is_tty(s)
+    s = b_repl_set_names(s)
+    s = b_repl_set_prompt(s)
     s = b_catch_die(s)
     s = b_eprint(s)
     s = b_exit(s)

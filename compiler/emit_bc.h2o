@@ -262,6 +262,12 @@ def builtin_of(name):
         Some(47)
     elif name == "vect_head":
         Some(48)
+    elif name == "repl_is_tty":
+        Some(49)
+    elif name == "repl_set_names":
+        Some(50)
+    elif name == "repl_set_prompt":
+        Some(51)
     else:
         None
 
