@@ -11,7 +11,7 @@ H2O 能寫**長期跑的本地 CLI／資料轉換**。不是 GHC 替代品，不
 - 入口：POSIX `./h2o` → `bin/h2o`。沒有映像時用 `cc` 編 `compiler/seed.c`。日常命令**不**啟動 Python。
 - 編譯器：`compiler/*.h2o`（編譯器自己用的子集：沒有 `|>`／`_`／f-string）。弱固定點：bytecode 陣列相同。
 - 執行期：`compiler/rt.c` 裡 tagged `Val` + 標記－清除 GC。
-- `--native`：每個 `def` 一支 C 函數再 `cc`。機器碼，仍是 boxed `Val`。
+- `--native`：boxed `Val` + GC 上的 C 函數後端，再 `cc`。不是 unbox，不是 LLVM。
 - `--vm`：解釋器映像。
 - `--target wasm`：**同一套 VM** 交叉編成 WASI，不是 Wasm 指令。
 - 套件：本地目錄。`h2o vendor` 把 git 樹拷進 `vendor/<name>/`。沒有 registry。

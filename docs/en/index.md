@@ -10,6 +10,6 @@ Short public docs. Historical knife logs stay in `docs/*.md` (mostly Chinese) an
 | [status.md](status.md) | What `./h2o` does today vs GHC / OCaml / Python / Go |
 | [../learn/0.txt](../learn/0.txt) | REPL tutorial (`? 0` … `? 11`) |
 
-Start from the [English README](../../README.md). Thirty-minute path is there.
+Start from the [English README](../../README.md). Thirty-minute path is there. License: MIT.
 
-Archive (design notes and version gates, Chinese): [00-principles](../00-principles.md) … [20-core11](../20-core11.md), [core/REPORT](../core/REPORT.md).
+Archive (design notes and version gates, Chinese): [00-principles](../00-principles.md) … [20-core11](../20-core11.md), [core/REPORT](../core/REPORT.md). V1 history: [ROADMAP-v1](../archive/ROADMAP-v1.md).

@@ -1,0 +1,22 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: C compiler
+        run: cc --version
+      - name: Seed bin/h2o from compiler/seed.c
+        run: sh compiler/seed.sh
+      - name: ./test
+        run: ./test

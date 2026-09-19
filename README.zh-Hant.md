@@ -2,7 +2,23 @@
 
 [English](README.md) | **中文**
 
-**V3.1.0** — 能寫長期跑的本地 CLI；`--native` 發 C 函數再 `cc`，是機器碼（tagged `Val`）；`--vm` 是解釋器；`h2o vendor` 把 git 樹變成目錄。Core 1.1：關閉列、`F[_]` kind、overlapping 只報錯。不是 GHC／pip／cargo。沒有套件註冊中心。
+不是 HTTP 伺服器 H2O，也不是 [H2O.ai](https://h2o.ai)。這是 **Haskell 的後繼**：含義走 Haskell，表面走 Python／Elixir／Go。授權：[MIT](LICENSE)。
+
+**V3.1.x** 是編譯器版本。**Core 1** 是凍結的語言合約。兩個數字不是同一件事。
+
+`--native` 是 **boxed `Val` + GC 上的 C 函數後端**，再 `cc`。`--vm` 是 bytecode 解釋器。`--target wasm` 是同一套 VM 交叉編成 WASI。`h2o vendor` 把 git 樹變成目錄。不是 GHC／pip／cargo。沒有套件註冊中心。
+
+**Haskell 的後繼，不是另一門語言。**
+
+| 能 | 不能 |
+|---|---|
+| 長期跑的本地 CLI／資料轉換 | 取代 GHC、OCaml、Koka |
+| `h2o check`：HM 子集、關閉列、`F[_]` kind | 推效應列變數 `...E` |
+| `{IO}` 當**已宣告**標籤（沒宣告的 `println` 會紅） | 從身體推出缺了哪一列 |
+| `--native` C 函數（boxed `Val`）；`native-fast` 必須快過 `h2o run` | unbox／LLVM |
+| `h2o fmt` 清行尾空白 | `gofmt` 級 AST 重印（下一刀） |
+| 目錄套件 + `h2o vendor` | registry、semver 解算、lockfile 圖 |
+| `once` 計次；`Vect[n,a]` 是 Peano | Rust 借用檢查、Idris 依賴類型 |
 
 **Haskell 的後繼，不是另一門語言。**
 
@@ -60,7 +76,11 @@ wasmtime --dir=. /tmp/count.wasm run examples/count examples/count/sample.txt
 ./test
 ```
 
-`--native` 把每個 `def` 發成 C 函數再 `cc`（機器碼，仍是 tagged `Val` + GC）。`--vm` 是解釋器映像。`--target wasm` 仍是同一套 VM 交叉編成 WASI。`]` 沒有套件註冊中心。`h2o vendor <git-url> [name]` 把 git 樹拷進 `vendor/<name>/`；之後 `h2o run vendor/name`／`:load vendor/name/` 與本地目錄相同。
+`--native` 把每個 `def` 發成 C 函數再 `cc`（boxed `Val` + GC，不是 unbox）。`--vm` 是解釋器映像。`--target wasm` 仍是同一套 VM 交叉編成 WASI。`]` 沒有套件註冊中心。`h2o vendor <git-url> [name]` 把 git 樹拷進 `vendor/<name>/`；之後 `h2o run vendor/name`／`:load vendor/name/` 與本地目錄相同。
+
+`h2o fmt` 只清行尾空白。`h2o build -o *.py`／`compiler/rt.py` 是 **unsupported debug**，不是第二套語意。
+
+需要 `cc`（macOS 上是 Xcode Command Line Tools）。Wasm 要 [WASI SDK](compiler/wasi-sdk.sh) 與 `wasmtime`；沒有就跳過那些測試。
 
 沒有 `bin/h2o` 時，`./h2o` 會用 `cc` 編 `compiler/seed.c`（可攜 C 快照，不靠 Python）。改完 `compiler/*.h2o` 後若要更新快照：
 

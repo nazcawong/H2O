@@ -2,9 +2,23 @@
 
 **English** | [中文](README.zh-Hant.md)
 
-**V3.1.0** — A language you can use to write long-running local CLIs. `--native` emits C functions and then `cc` (machine code, still tagged `Val`). `--vm` is the interpreter. `h2o vendor` turns a git tree into a directory. Core 1.1: closed rows, `F[_]` kinds, overlapping instances only error. Not GHC, pip, or cargo. No package registry.
+Not the HTTP server, not [H2O.ai](https://h2o.ai). This is a **Haskell successor**: meaning from Haskell, surface from Python / Elixir / Go. License: [MIT](LICENSE).
+
+**V3.1.x** is the compiler. **Core 1** is the frozen language contract. They are not the same number.
+
+`--native` is a **C-function backend over boxed `Val` + GC**, then `cc`. `--vm` is the bytecode interpreter. `--target wasm` is that same VM cross-compiled to WASI. `h2o vendor` copies a git tree into a directory. No GHC, pip, cargo, or package registry.
 
 **A successor to Haskell — not another language.**
+
+| Can | Cannot |
+|---|---|
+| Long-running local CLI / data transforms | Replace GHC, OCaml, or Koka |
+| `h2o check`: HM subset, closed rows, `F[_]` kinds | Infer effect-row variables `...E` |
+| `{IO}` as a **declared** tag (undeclared `println` is an error) | Infer which effect row is missing from the body |
+| `--native` C functions (boxed `Val`); `native-fast` must beat `h2o run` | Unboxed native / LLVM |
+| `h2o fmt` strips trailing space | `gofmt`-style AST reprint (next knife) |
+| Directory packages + `h2o vendor` | A registry, semver solver, lockfile graph |
+| `once` counts uses; `Vect[n,a]` is Peano | Rust borrow checking, Idris dependents |
 
 H2O keeps the few core ideas the 1987–1990 committee actually meant to preserve, and drops thirty years of historical baggage, inconsistent defaults, and engineering friction. Anything new must **reduce** the number of extensions, not grow another pile of pragmas.
 
@@ -60,7 +74,11 @@ wasmtime --dir=. /tmp/count.wasm run examples/count examples/count/sample.txt
 ./test
 ```
 
-`--native` turns each `def` into a C function and then `cc` (machine code, still tagged `Val` + GC). `--vm` is the interpreter image. `--target wasm` is still the same VM cross-compiled to WASI. `]` has no package registry. `h2o vendor <git-url> [name]` copies a git tree into `vendor/<name>/`; after that `h2o run vendor/name` and `:load vendor/name/` behave like a local directory.
+`--native` turns each `def` into a C function and then `cc` (boxed `Val` + GC, not unbox). `--vm` is the interpreter image. `--target wasm` is still the same VM cross-compiled to WASI. `]` has no package registry. `h2o vendor <git-url> [name]` copies a git tree into `vendor/<name>/`; after that `h2o run vendor/name` and `:load vendor/name/` behave like a local directory.
+
+`h2o fmt` only strips trailing whitespace. `h2o build -o *.py` / `compiler/rt.py` is an **unsupported debug** channel, not a second semantics.
+
+Need `cc` (Xcode Command Line Tools on macOS). Wasm needs a [WASI SDK](compiler/wasi-sdk.sh) and `wasmtime`; without them those tests skip.
 
 If `bin/h2o` is missing, `./h2o` compiles `compiler/seed.c` with `cc` (a portable C snapshot; no Python). After changing `compiler/*.h2o`, refresh the snapshot with:
 

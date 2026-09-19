@@ -11,7 +11,7 @@ H2O is a language for **long-running local CLIs / data transforms**. It is not a
 - Entry: POSIX `./h2o` → `bin/h2o`. Missing image: `cc` compiles `compiler/seed.c`. Daily commands do **not** start Python.
 - Compiler: `compiler/*.h2o` (a small subset: no `|>` / `_` / f-string in the compiler itself). Weak fixed point: same bytecode array.
 - Runtime: tagged `Val` + mark–sweep GC in `compiler/rt.c`.
-- `--native`: each `def` becomes a C function, then `cc`. Machine code, still boxed `Val`.
+- `--native`: C-function backend over boxed `Val` + GC, then `cc`. Not unbox, not LLVM.
 - `--vm`: interpreter image.
 - `--target wasm`: the **same** VM cross-compiled to WASI, not Wasm instructions.
 - Packages: local directories. `h2o vendor` copies a git tree into `vendor/<name>/`. No registry.
