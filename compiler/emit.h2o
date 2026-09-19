@@ -34,6 +34,8 @@ def emit_expr(e, lv: Int, n: Int) -> {h: Text, e: Text, n: Int}:
     match e:
         case NInt(x):
             {h: "", e: int_to_text(x), n: n}
+        case NFloat(s):
+            {h: "", e: s, n: n}
         case NText(s):
             {h: "", e: py_str(s), n: n}
         case NFstr(ps):

@@ -106,6 +106,10 @@ def op_idiv():
     54
 def op_pow():
     55
+def op_dconst():
+    56
+def op_neg():
+    57
 
 def al_get(xs, k, d):
     match xs:
@@ -278,6 +282,12 @@ def builtin_of(name):
         Some(52)
     elif name == "isqrt":
         Some(53)
+    elif name == "float":
+        Some(54)
+    elif name == "int":
+        Some(55)
+    elif name == "sqrt":
+        Some(56)
     else:
         None
 
@@ -410,6 +420,9 @@ def bc_expr(st, e):
     match e:
         case NInt(x):
             emit2(st, op_iconst(), x)
+        case NFloat(s):
+            u = intern(st, s)
+            emit2(u, op_dconst(), u.i)
         case NText(s):
             u = intern(st, s)
             emit2(u, op_sconst(), u.i)
@@ -437,9 +450,8 @@ def bc_expr(st, e):
                 s1 = bc_expr(st, w.e)
                 emit1(s1, op_not())
             else:
-                s0 = emit2(st, op_iconst(), 0)
-                s1 = bc_expr(s0, w.e)
-                emit1(s1, op_sub())
+                s1 = bc_expr(st, w.e)
+                emit1(s1, op_neg())
         case NList(xs):
             bc_list(st, xs)
         case NRec(w):

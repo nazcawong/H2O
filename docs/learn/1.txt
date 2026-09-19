@@ -10,7 +10,10 @@ Numbers, text, booleans:
   7 % 3             # 1
   7 // 2            # 3 (floor); / truncates toward zero
   abs(-7)
-  isqrt(10)         # 3; integer square root, not Float sqrt
+  isqrt(10)         # 3; integer square root
+  sqrt(4.0)         # 2.0; Float
+  float(2) + 0.5
+  int(3.9)          # 3
   "Ada"
   True
   :t 1 + 2          (or ? 1 + 2)

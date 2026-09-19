@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <sys/stat.h>
+#include <math.h>
 #ifndef __wasi__
 #include <setjmp.h>
 #endif
@@ -28,8 +29,9 @@ struct Val {
     int k; long i; char *s; List *l; Rec *r; Ctor *c;
     Val (*fn1)(Val);
     int fn_id; int ncap; Val *caps;
+    double x;
 };
-enum { K_I=1, K_B=2, K_T=3, K_L=4, K_R=5, K_U=6, K_F=7, K_C=8 };
+enum { K_I=1, K_B=2, K_T=3, K_L=4, K_R=5, K_U=6, K_F=7, K_C=8, K_D=9 };
 enum { GK_LIST=1, GK_REC, GK_CTOR, GK_STR, GK_VALS, GK_KEYS };
 #define GC_N 8192
 typedef struct GEnt {
@@ -138,6 +140,7 @@ static void gc_mark_val(Val v){
 
 static Val V_U(void){ Val v; memset(&v,0,sizeof v); v.k=K_U; return v; }
 static Val V_I(long x){ Val v=V_U(); v.k=K_I; v.i=x; return v; }
+static Val V_D(double x){ Val v=V_U(); v.k=K_D; v.x=x; return v; }
 static Val V_B(int x){ Val v=V_U(); v.k=K_B; v.i=x; return v; }
 static Val V_T(const char *s){ Val v=V_U(); v.k=K_T; v.s=gc_strdup(s?s:""); return v; }
 static Val V_L(List *l){ Val v=V_U(); v.k=K_L; v.l=l; return v; }
@@ -294,7 +297,7 @@ static void h2o_cmp_paths(char **xs, int *n, const char *pref){
 static const char *h2o_kw[]={
     "def","if","elif","else","match","case","type","trait","impl","fn",
     "pub","import","from","not","and","or","total","with","handle",
-    "map","filter","foldl","join","println","cat","range","abs","isqrt",
+    "map","filter","foldl","join","println","cat","range","abs","isqrt","float","int","sqrt",
     ":t",":load",":quit",":q",":exit",
     0
 };
@@ -502,6 +505,7 @@ static Val rec_get(Val o, const char *k){
 }
 static int truth(Val v){
     if(v.k==K_B||v.k==K_I) return v.i!=0;
+    if(v.k==K_D) return v.x!=0;
     if(v.k==K_T) return v.s && v.s[0];
     if(v.k==K_L) return v.l && v.l->n;
     if(v.k==K_U) return 0;
@@ -509,6 +513,7 @@ static int truth(Val v){
 }
 static int eqv(Val a, Val b){
     if(a.k!=b.k) return 0;
+    if(a.k==K_D) return a.x==b.x;
     if(a.k==K_I||a.k==K_B) return a.i==b.i;
     if(a.k==K_T) return strcmp(a.s?a.s:"", b.s?b.s:"")==0;
     if(a.k==K_L){
@@ -558,6 +563,7 @@ static void show_into(char *o, size_t cap, Val x, int d){
         size_t n=strlen(o), m=x.s?strlen(x.s):0;
         if(n+m+3<cap){ strcat(o, "\""); if(x.s) strcat(o, x.s); strcat(o, "\""); }
     } else if(x.k==K_I){ char b[32]; sprintf(b,"%ld", x.i); strncat(o, b, cap-strlen(o)-1); }
+    else if(x.k==K_D){ char b[64]; snprintf(b,sizeof b,"%.15g", x.x); strncat(o, b, cap-strlen(o)-1); }
     else if(x.k==K_B) strncat(o, x.i?"True":"False", cap-strlen(o)-1);
     else if(x.k==K_U) strncat(o, "()", cap-strlen(o)-1);
     else if(x.k==K_L && x.l){
@@ -582,6 +588,7 @@ static void show_into(char *o, size_t cap, Val x, int d){
 static Val h_show(Val x){
     if(x.k==K_T) return x;
     if(x.k==K_I){ char b[32]; sprintf(b,"%ld",x.i); return V_T(b); }
+    if(x.k==K_D){ char b[64]; snprintf(b,sizeof b,"%.15g", x.x); return V_T(b); }
     if(x.k==K_B) return V_T(x.i?"True":"False");
     char buf[1024]; buf[0]=0;
     show_into(buf, sizeof buf, x, 6);
@@ -673,7 +680,7 @@ enum {
     OP_LNEW, OP_LADD, OP_LEXTEND, OP_ISLIST, OP_NONE,
     OP_PUSH_H, OP_POP_H, OP_THROW, OP_OKERR,
     OP_GLOAD, OP_GSTORE,
-    OP_MOD, OP_IDIV, OP_POW
+    OP_MOD, OP_IDIV, OP_POW, OP_DCONST, OP_NEG
 };
 
 enum {
@@ -689,7 +696,7 @@ enum {
     BI_WRITE_ERR, BI_EXIT, BI_GC,
     BI_VECT_CONS, BI_VECT_HEAD,
     BI_REPL_TTY, BI_REPL_NAMES, BI_REPL_PROMPT,
-    BI_ABS, BI_ISQRT
+    BI_ABS, BI_ISQRT, BI_FLOAT, BI_TOINT, BI_SQRT
 };
 
 #define VM_STACK 8192
@@ -823,11 +830,21 @@ static Val clo_apply(Val f, Val *args, int n){
 }
 static Val h2o_add(Val a, Val b){
     if(a.k==K_T||b.k==K_T) return h_cat(a.k==K_T?a:h_show(a), b.k==K_T?b:h_show(b));
+    if(a.k==K_D && b.k==K_D) return V_D(a.x+b.x);
     return V_I(a.i+b.i);
 }
-static Val h2o_sub(Val a, Val b){ return V_I(a.i-b.i); }
-static Val h2o_mul(Val a, Val b){ return V_I(a.i*b.i); }
-static Val h2o_div(Val a, Val b){ return V_I(b.i? a.i/b.i : 0); }
+static Val h2o_sub(Val a, Val b){
+    if(a.k==K_D && b.k==K_D) return V_D(a.x-b.x);
+    return V_I(a.i-b.i);
+}
+static Val h2o_mul(Val a, Val b){
+    if(a.k==K_D && b.k==K_D) return V_D(a.x*b.x);
+    return V_I(a.i*b.i);
+}
+static Val h2o_div(Val a, Val b){
+    if(a.k==K_D && b.k==K_D) return V_D(b.x!=0? a.x/b.x : 0);
+    return V_I(b.i? a.i/b.i : 0);
+}
 static void h2o_fail(const char *m){
     if(catch_on){
         snprintf(catch_msg, sizeof catch_msg, "%s", m?m:"die");
@@ -867,17 +884,32 @@ static long h2o_isqrt_i(long n){
 }
 static Val h2o_mod(Val a, Val b){ return V_I(b.i? a.i%b.i : 0); }
 static Val h2o_idiv(Val a, Val b){ return V_I(h2o_floordiv(a.i, b.i)); }
-static Val h2o_pow(Val a, Val b){ return V_I(h2o_pow_i(a.i, b.i)); }
+static Val h2o_pow(Val a, Val b){
+    if(a.k==K_D && b.k==K_D) return V_D(pow(a.x, b.x));
+    return V_I(h2o_pow_i(a.i, b.i));
+}
 static Val h2o_eq(Val a, Val b){ return V_B(eqv(a,b)); }
 static Val h2o_ne(Val a, Val b){ return V_B(!eqv(a,b)); }
-static Val h2o_lt(Val a, Val b){ return V_B(a.i<b.i); }
-static Val h2o_le(Val a, Val b){ return V_B(a.i<=b.i); }
-static Val h2o_gt(Val a, Val b){ return V_B(a.i>b.i); }
-static Val h2o_ge(Val a, Val b){ return V_B(a.i>=b.i); }
 static Val h2o_and(Val a, Val b){ return V_B(truth(a)&&truth(b)); }
 static Val h2o_or(Val a, Val b){ return V_B(truth(a)||truth(b)); }
 static Val h2o_not(Val a){ return V_B(!truth(a)); }
-static Val h2o_neg(Val a){ return V_I(-a.i); }
+static Val h2o_neg(Val a){ return a.k==K_D? V_D(-a.x) : V_I(-a.i); }
+static Val h2o_lt(Val a, Val b){
+    if(a.k==K_D && b.k==K_D) return V_B(a.x<b.x);
+    return V_B(a.i<b.i);
+}
+static Val h2o_le(Val a, Val b){
+    if(a.k==K_D && b.k==K_D) return V_B(a.x<=b.x);
+    return V_B(a.i<=b.i);
+}
+static Val h2o_gt(Val a, Val b){
+    if(a.k==K_D && b.k==K_D) return V_B(a.x>b.x);
+    return V_B(a.i>b.i);
+}
+static Val h2o_ge(Val a, Val b){
+    if(a.k==K_D && b.k==K_D) return V_B(a.x>=b.x);
+    return V_B(a.i>=b.i);
+}
 static Val h2o_field(Val o, const char *k){
     if(o.k==K_C && o.c && o.c->n==1 && o.c->xs[0].k==K_R)
         return rec_get(o.c->xs[0], k);
@@ -1012,6 +1044,15 @@ static Val h2o_do_builtin(int id, Val *a, int arity){
             } break;
             case BI_ISQRT:
                 r=V_I(h2o_isqrt_i(a[0].k==K_I? a[0].i:0)); break;
+            case BI_FLOAT:
+                r=V_D(a[0].k==K_D? a[0].x : (double)(a[0].k==K_I? a[0].i:0)); break;
+            case BI_TOINT:
+                r=V_I(a[0].k==K_D? (long)a[0].x : (a[0].k==K_I? a[0].i:0)); break;
+            case BI_SQRT: {
+                double x=a[0].k==K_D? a[0].x : 0;
+                if(x<0) h2o_fail("sqrt 不能是負的");
+                r=V_D(sqrt(x));
+            } break;
             case BI_WRITE_OUT: {
                 const char *s=a[0].k==K_T&&a[0].s? a[0].s : "";
                 fputs(s, stdout);
@@ -1288,22 +1329,21 @@ static int vm_interp(int stop_fp){
         } break;
         case OP_POP: if(vsp) vsp--; break;
         case OP_DUP: vst[vsp]=vst[vsp-1]; vsp++; break;
-        case OP_ADD: { Val b=vst[--vsp], a=vst[--vsp];
-            if(a.k==K_T||b.k==K_T) vst[vsp++]=h_cat(a.k==K_T?a:h_show(a), b.k==K_T?b:h_show(b));
-            else vst[vsp++]=V_I(a.i+b.i);
-        } break;
-        case OP_SUB: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=V_I(a.i-b.i); } break;
-        case OP_MUL: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=V_I(a.i*b.i); } break;
-        case OP_DIV: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=V_I(b.i? a.i/b.i : 0); } break;
-        case OP_MOD: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=V_I(b.i? a.i%b.i : 0); } break;
-        case OP_IDIV: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=V_I(h2o_floordiv(a.i, b.i)); } break;
-        case OP_POW: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=V_I(h2o_pow_i(a.i, b.i)); } break;
+        case OP_ADD: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=h2o_add(a,b); } break;
+        case OP_SUB: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=h2o_sub(a,b); } break;
+        case OP_MUL: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=h2o_mul(a,b); } break;
+        case OP_DIV: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=h2o_div(a,b); } break;
+        case OP_MOD: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=h2o_mod(a,b); } break;
+        case OP_IDIV: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=h2o_idiv(a,b); } break;
+        case OP_POW: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=h2o_pow(a,b); } break;
+        case OP_DCONST: vst[vsp++]=V_D(atof(GP.strs[GP.code[vip++]])); break;
+        case OP_NEG: { Val a=vst[--vsp]; vst[vsp++]=h2o_neg(a); } break;
         case OP_EQ: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=V_B(eqv(a,b)); } break;
         case OP_NE: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=V_B(!eqv(a,b)); } break;
-        case OP_LT: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=V_B(a.i<b.i); } break;
-        case OP_LE: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=V_B(a.i<=b.i); } break;
-        case OP_GE: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=V_B(a.i>=b.i); } break;
-        case OP_GT: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=V_B(a.i>b.i); } break;
+        case OP_LT: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=h2o_lt(a,b); } break;
+        case OP_LE: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=h2o_le(a,b); } break;
+        case OP_GE: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=h2o_ge(a,b); } break;
+        case OP_GT: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=h2o_gt(a,b); } break;
         case OP_AND: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=V_B(truth(a)&&truth(b)); } break;
         case OP_OR: { Val b=vst[--vsp], a=vst[--vsp]; vst[vsp++]=V_B(truth(a)||truth(b)); } break;
         case OP_NOT: { Val a=vst[--vsp]; vst[vsp++]=V_B(!truth(a)); } break;

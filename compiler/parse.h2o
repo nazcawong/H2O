@@ -197,6 +197,8 @@ def parse_ty_atom(ts, i):
                 {v: TApp({f: t.v, args: args.v}), i: j2}
         elif t.v == "Int":
             {v: TInt(0), i: j}
+        elif t.v == "Float":
+            {v: TFloat(0), i: j}
         elif t.v == "Bool":
             {v: TBool(0), i: j}
         elif t.v == "Text":
@@ -743,6 +745,8 @@ def parse_atom(ts, i):
     t = peek(ts, i)
     if t.k == "int":
         {v: NInt(t.n), i: i + 1}
+    elif t.k == "float":
+        {v: NFloat(t.v), i: i + 1}
     elif t.k == "str":
         {v: NText(t.v), i: i + 1}
     elif t.k == "name" and t.v == "True":
@@ -1174,7 +1178,7 @@ def parse_program(ts, i):
         s = parse_stmt(ts, i)
         rest = parse_program(ts, s.i)
         mk_prog([s.v, *rest.v], rest.i, rest.imps, rest.pubs)
-    elif t.k == "int" or t.k == "str" or t.k == "lparen" or t.k == "lbrack" or t.k == "lbrace" or t.k == "fn" or t.k == "if" or t.k == "match" or t.k == "not" or t.k == "minus" or t.k == "fstr" or t.k == "hole":
+    elif t.k == "int" or t.k == "float" or t.k == "str" or t.k == "lparen" or t.k == "lbrack" or t.k == "lbrace" or t.k == "fn" or t.k == "if" or t.k == "match" or t.k == "not" or t.k == "minus" or t.k == "fstr" or t.k == "hole":
         s = parse_stmt(ts, i)
         rest = parse_program(ts, s.i)
         mk_prog([s.v, *rest.v], rest.i, rest.imps, rest.pubs)

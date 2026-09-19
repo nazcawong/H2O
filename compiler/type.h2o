@@ -114,6 +114,8 @@ def ty_show(t):
     match t:
         case TInt(z):
             "Int"
+        case TFloat(z):
+            "Float"
         case TBool(z):
             "Bool"
         case TText(z):
@@ -279,6 +281,12 @@ def ty_unify(a, b, st):
                         case TInt(z):
                             match b2:
                                 case TInt(y):
+                                    st
+                                case _:
+                                    ty_mismatch(st, a2, b2)
+                        case TFloat(z):
+                            match b2:
+                                case TFloat(y):
                                     st
                                 case _:
                                     ty_mismatch(st, a2, b2)
@@ -731,6 +739,15 @@ def b_abs(st):
 def b_isqrt(st):
     add_poly(st, "isqrt", [], mk_fun([TInt(0)], TInt(0), []))
 
+def b_float(st):
+    add_poly(st, "float", [], mk_fun([TInt(0)], TFloat(0), []))
+
+def b_toint(st):
+    add_poly(st, "int", [], mk_fun([TFloat(0)], TInt(0), []))
+
+def b_sqrt(st):
+    add_poly(st, "sqrt", [], mk_fun([TFloat(0)], TFloat(0), []))
+
 def add_builtins(st):
     s = b_map(st)
     s = b_filter(s)
@@ -768,6 +785,9 @@ def add_builtins(st):
     s = b_repl_set_prompt(s)
     s = b_abs(s)
     s = b_isqrt(s)
+    s = b_float(s)
+    s = b_toint(s)
+    s = b_sqrt(s)
     s = b_catch_die(s)
     s = b_eprint(s)
     s = b_exit(s)
@@ -814,7 +834,7 @@ def ctor_arity(st, name):
         1
     elif name == "Result" or name == "Vect":
         2
-    elif name == "Int" or name == "Bool" or name == "Text":
+    elif name == "Int" or name == "Bool" or name == "Text" or name == "Float":
         0
     else:
         match adt_find(st.adts, name):
@@ -888,6 +908,8 @@ def ty_ctor_name(t, st):
     match t2:
         case TInt(z):
             "Int"
+        case TFloat(z):
+            "Float"
         case TBool(z):
             "Bool"
         case TText(z):
@@ -911,6 +933,8 @@ def eq_has(st, t):
     t2 = ty_expand(t, st)
     match t2:
         case TInt(z):
+            True
+        case TFloat(z):
             True
         case TBool(z):
             True
@@ -1446,6 +1470,8 @@ def infer_expr(e, st):
     match e:
         case NInt(x):
             {t: TInt(0), st: st}
+        case NFloat(s):
+            {t: TFloat(0), st: st}
         case NText(s):
             {t: TText(0), st: st}
         case NBool(b):
@@ -1485,7 +1511,7 @@ def infer_expr(e, st):
             if w.op == "not":
                 {t: TBool(0), st: ty_unify(r.t, TBool(0), r.st)}
             else:
-                {t: TInt(0), st: ty_unify(r.t, TInt(0), r.st)}
+                infer_neg(r)
         case NList(xs):
             a = ty_fresh(st)
             st2 = foldl(xs, a.st, infer_list_step(a.t))
@@ -1613,20 +1639,76 @@ def infer_call(w, st):
             funty = infer_expr(w.fun, ia.st)
             apply_fun(funty.t, ia.ts, funty.st)
 
+def ty_is_float(t, st):
+    match ty_expand(t, st):
+        case TFloat(z):
+            True
+        case _:
+            False
+
+def ty_is_int(t, st):
+    match ty_expand(t, st):
+        case TInt(z):
+            True
+        case _:
+            False
+
+def mix_num(st):
+    err(st.at, "Int 和 Float 不能混用，請用 float(...) 或 int(...)")
+
+def infer_neg(r):
+    if ty_is_float(r.t, r.st):
+        {t: TFloat(0), st: r.st}
+    else:
+        {t: TInt(0), st: ty_unify(r.t, TInt(0), r.st)}
+
+def infer_arith(op, l, r):
+    if op == "%" or op == "//":
+        st2 = ty_unify(l.t, TInt(0), r.st)
+        st3 = ty_unify(r.t, TInt(0), st2)
+        {t: TInt(0), st: st3}
+    elif ty_is_float(l.t, r.st) and ty_is_int(r.t, r.st):
+        mix_num(r.st)
+    elif ty_is_int(l.t, r.st) and ty_is_float(r.t, r.st):
+        mix_num(r.st)
+    elif ty_is_float(l.t, r.st) or ty_is_float(r.t, r.st):
+        st2 = ty_unify(l.t, TFloat(0), r.st)
+        st3 = ty_unify(r.t, TFloat(0), st2)
+        {t: TFloat(0), st: st3}
+    else:
+        st2 = ty_unify(l.t, TInt(0), r.st)
+        st3 = ty_unify(r.t, TInt(0), st2)
+        {t: TInt(0), st: st3}
+
+def infer_cmp_num(l, r):
+    if ty_is_float(l.t, r.st) and ty_is_int(r.t, r.st):
+        mix_num(r.st)
+    elif ty_is_int(l.t, r.st) and ty_is_float(r.t, r.st):
+        mix_num(r.st)
+    elif ty_is_float(l.t, r.st) or ty_is_float(r.t, r.st):
+        st2 = ty_unify(l.t, TFloat(0), r.st)
+        st3 = ty_unify(r.t, TFloat(0), st2)
+        {t: TBool(0), st: st3}
+    else:
+        st2 = ty_unify(l.t, TInt(0), r.st)
+        st3 = ty_unify(r.t, TInt(0), st2)
+        {t: TBool(0), st: st3}
+
 def infer_bin(w, st):
     l = infer_expr(w.l, st)
     r = infer_expr(w.r, l.st)
     if w.op == "+" or w.op == "-" or w.op == "*" or w.op == "/" or w.op == "**" or w.op == "%" or w.op == "//":
-        st2 = ty_unify(l.t, TInt(0), r.st)
-        st3 = ty_unify(r.t, TInt(0), st2)
-        {t: TInt(0), st: st3}
+        infer_arith(w.op, l, r)
     elif w.op == "==" or w.op == "!=":
-        st2 = ty_unify(l.t, r.t, r.st)
-        {t: TBool(0), st: st2}
+        if ty_is_float(l.t, r.st) and ty_is_int(r.t, r.st):
+            mix_num(r.st)
+        elif ty_is_int(l.t, r.st) and ty_is_float(r.t, r.st):
+            mix_num(r.st)
+        else:
+            st2 = ty_unify(l.t, r.t, r.st)
+            {t: TBool(0), st: st2}
     elif w.op == "<" or w.op == ">" or w.op == "<=" or w.op == ">=":
-        st2 = ty_unify(l.t, TInt(0), r.st)
-        st3 = ty_unify(r.t, TInt(0), st2)
-        {t: TBool(0), st: st3}
+        infer_cmp_num(l, r)
     else:
         st2 = ty_unify(l.t, TBool(0), r.st)
         st3 = ty_unify(r.t, TBool(0), st2)

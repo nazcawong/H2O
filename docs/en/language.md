@@ -8,7 +8,8 @@ Core 1 is frozen. No pragmas, no second syntax. Full contract: [core/REPORT.md](
 
 4-space indent. `and` / `or` / `not`. No `;`, no block `{}`. Calls are `f(x, y)`. Multi-step data uses only `|>`. `.` is field or module, not a method.
 
-Int arithmetic: `+ - * /` (trunc toward zero), `//` (floor), `%`, `**` (right-associative). `abs(n)`, `isqrt(n)` (integer square root). No `Float` / `sqrt` yet.
+Int: `+ - * /` (trunc toward zero), `//` (floor), `%`, `**` (right-associative). `abs(n)`, `isqrt(n)`.
+Float: `2.0`, `3.14`; `+ - * / **`; `sqrt(x)`, `float(n)`, `int(x)`. Int and Float do not mix.
 
 ```
 def add(x: Int, y: Int) -> Int:

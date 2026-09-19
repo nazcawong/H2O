@@ -1,0 +1,2 @@
+def main() -> {IO} ():
+    println(sqrt(0.0 - 1.0))

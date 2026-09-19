@@ -4,6 +4,8 @@ def ir_e(e):
     match e:
         case NInt(x):
             cat("IInt ", int_to_text(x))
+        case NFloat(s):
+            cat("IFloat ", s)
         case NText(s):
             cat("IText ", s)
         case NBool(b):

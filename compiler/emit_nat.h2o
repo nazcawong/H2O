@@ -144,6 +144,8 @@ def nat_expr(e, st):
     match e:
         case NInt(x):
             nat_st(st.h, cat("V_I(", cat(int_to_text(x), ")")), st.n, st.fns, st.lid, st.env, st.tab, st.lams)
+        case NFloat(s):
+            nat_st(st.h, cat("V_D(", cat(s, ")")), st.n, st.fns, st.lid, st.env, st.tab, st.lams)
         case NText(s):
             nat_st(st.h, cat("V_T(", cat(c_str(s), ")")), st.n, st.fns, st.lid, st.env, st.tab, st.lams)
         case NBool(b):

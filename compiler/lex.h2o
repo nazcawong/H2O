@@ -312,8 +312,15 @@ def lex_line(s: Text, i: Int, line: Int, acc: List[Tok], col0: Int) -> List[Tok]
                 lex_line(s, j, line, [*acc, mkc(word_kind(w), w, 0, line, c)], col0)
         elif is_digit(ch):
             j = read_while(s, i + 1, is_digit)
-            w = slice_text(s, i, j)
-            lex_line(s, j, line, [*acc, mkc("int", w, parse_int_text(w), line, c)], col0)
+            dot = slice_text(s, j, j + 1)
+            d2 = slice_text(s, j + 1, j + 2)
+            if dot == "." and is_digit(d2):
+                k = read_while(s, j + 2, is_digit)
+                w = slice_text(s, i, k)
+                lex_line(s, k, line, [*acc, mkc("float", w, 0, line, c)], col0)
+            else:
+                w = slice_text(s, i, j)
+                lex_line(s, j, line, [*acc, mkc("int", w, parse_int_text(w), line, c)], col0)
         elif ch == "\"":
             r = read_str(s, i + 1, "")
             lex_line(s, r.i, line, [*acc, mkc("str", r.v, 0, line, c)], col0)
