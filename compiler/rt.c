@@ -228,12 +228,11 @@ static void h2o_hist_add(const char *s){
 }
 static void h2o_line_draw(int oldc, int oldn, const char *buf, int n, int cur){
     int i;
-    for(i=0;i<oldc;i++) fputc('\b', stdout);
+    (void)oldc; (void)oldn;
+    fputc('\r', stdout);
+    fputs(h2o_prompt, stdout);
     if(n) fwrite(buf, 1, (size_t)n, stdout);
-    int extra=oldn-n;
-    if(extra<0) extra=0;
-    for(i=0;i<extra;i++) fputc(' ', stdout);
-    for(i=0;i<extra;i++) fputc('\b', stdout);
+    fputs("\033[K", stdout);
     for(i=0;i<n-cur;i++) fputc('\b', stdout);
     fflush(stdout);
 }
