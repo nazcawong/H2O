@@ -748,6 +748,13 @@ def b_toint(st):
 def b_sqrt(st):
     add_poly(st, "sqrt", [], mk_fun([TFloat(0)], TFloat(0), []))
 
+def b_vm_exec(st):
+    a = ty_fresh(st)
+    b = ty_fresh(a.st)
+    c = ty_fresh(b.st)
+    d = ty_fresh(c.st)
+    add_poly(d.st, "vm_exec", [], mk_fun([a.t, b.t, c.t, d.t], TUnit(0), ["IO"]))
+
 def add_builtins(st):
     s = b_map(st)
     s = b_filter(s)
@@ -788,6 +795,7 @@ def add_builtins(st):
     s = b_float(s)
     s = b_toint(s)
     s = b_sqrt(s)
+    s = b_vm_exec(s)
     s = b_catch_die(s)
     s = b_eprint(s)
     s = b_exit(s)
@@ -1098,7 +1106,8 @@ def add_annotated_def(st, s):
                 g = ty_generalize(h.st, h.t)
                 env_bind_cs(h.st, w.name, g.t, True, g.vars, h.tcs)
             else:
-                st
+                u = ty_fresh(st)
+                env_bind(u.st, w.name, u.t, False, [])
         case _:
             st
 
@@ -1497,8 +1506,11 @@ def infer_expr(e, st):
                                 else:
                                     {t: mk_fun(u.payload, u.t, []), st: u.st}
                             case None:
-                                u = ty_fresh(st)
-                                {t: u.t, st: u.st}
+                                if is_ctor_name(s):
+                                    u = ty_fresh(st)
+                                    {t: u.t, st: u.st}
+                                else:
+                                    err(st.at, cat("沒有 ", s))
         case NCall(w):
             infer_call(w, st)
         case NField(w):
