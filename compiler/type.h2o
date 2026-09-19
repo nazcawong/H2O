@@ -725,6 +725,12 @@ def b_exit(st):
 def b_gc(st):
     add_poly(st, "gc", [], mk_fun([], TInt(0), []))
 
+def b_abs(st):
+    add_poly(st, "abs", [], mk_fun([TInt(0)], TInt(0), []))
+
+def b_isqrt(st):
+    add_poly(st, "isqrt", [], mk_fun([TInt(0)], TInt(0), []))
+
 def add_builtins(st):
     s = b_map(st)
     s = b_filter(s)
@@ -760,6 +766,8 @@ def add_builtins(st):
     s = b_repl_is_tty(s)
     s = b_repl_set_names(s)
     s = b_repl_set_prompt(s)
+    s = b_abs(s)
+    s = b_isqrt(s)
     s = b_catch_die(s)
     s = b_eprint(s)
     s = b_exit(s)
@@ -1608,7 +1616,7 @@ def infer_call(w, st):
 def infer_bin(w, st):
     l = infer_expr(w.l, st)
     r = infer_expr(w.r, l.st)
-    if w.op == "+" or w.op == "-" or w.op == "*" or w.op == "/":
+    if w.op == "+" or w.op == "-" or w.op == "*" or w.op == "/" or w.op == "**" or w.op == "%" or w.op == "//":
         st2 = ty_unify(l.t, TInt(0), r.st)
         st3 = ty_unify(r.t, TInt(0), st2)
         {t: TInt(0), st: st3}

@@ -6,6 +6,11 @@ Indented blocks (def / if / match) end with a blank line.
 Numbers, text, booleans:
 
   1 + 2
+  2 ** 3            # 8; ** is right-associative
+  7 % 3             # 1
+  7 // 2            # 3 (floor); / truncates toward zero
+  abs(-7)
+  isqrt(10)         # 3; integer square root, not Float sqrt
   "Ada"
   True
   :t 1 + 2          (or ? 1 + 2)

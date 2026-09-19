@@ -355,10 +355,16 @@ def lex_line(s: Text, i: Int, line: Int, acc: List[Tok], col0: Int) -> List[Tok]
             lex_line(s, i + 1, line, [*acc, mkc("plus", ch, 0, line, c)], col0)
         elif ch == "-":
             lex_line(s, i + 1, line, [*acc, mkc("minus", ch, 0, line, c)], col0)
+        elif two_at(s, i) == "**":
+            lex_line(s, i + 2, line, [*acc, mkc("starstar", "**", 0, line, c)], col0)
+        elif two_at(s, i) == "//":
+            lex_line(s, i + 2, line, [*acc, mkc("slash2", "//", 0, line, c)], col0)
         elif ch == "*":
             lex_line(s, i + 1, line, [*acc, mkc("star", ch, 0, line, c)], col0)
         elif ch == "/":
             lex_line(s, i + 1, line, [*acc, mkc("slash", ch, 0, line, c)], col0)
+        elif ch == "%":
+            lex_line(s, i + 1, line, [*acc, mkc("percent", ch, 0, line, c)], col0)
         elif ch == "<":
             lex_line(s, i + 1, line, [*acc, mkc("lt", ch, 0, line, c)], col0)
         elif ch == ">":

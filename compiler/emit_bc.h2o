@@ -100,6 +100,12 @@ def op_gload():
     51
 def op_gstore():
     52
+def op_mod():
+    53
+def op_idiv():
+    54
+def op_pow():
+    55
 
 def al_get(xs, k, d):
     match xs:
@@ -268,6 +274,10 @@ def builtin_of(name):
         Some(50)
     elif name == "repl_set_prompt":
         Some(51)
+    elif name == "abs":
+        Some(52)
+    elif name == "isqrt":
+        Some(53)
     else:
         None
 
@@ -487,6 +497,12 @@ def bc_bin(st, w):
             op_mul()
         elif w.op == "/":
             op_div()
+        elif w.op == "%":
+            op_mod()
+        elif w.op == "//":
+            op_idiv()
+        elif w.op == "**":
+            op_pow()
         elif w.op == "==":
             op_eq()
         elif w.op == "!=":

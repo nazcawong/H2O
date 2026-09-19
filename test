@@ -157,6 +157,8 @@ else
 fi
 
 # --- small programs ---
+expect_run arith "$CASES/arith.h2o" "256"
+expect_run_err pow_neg "$CASES/pow_neg.h2o" "次方不能是負的"
 expect_run if_true "$CASES/if_true.h2o" "if-ok"
 expect_run eq_sym "$CASES/eq_sym.h2o" "sym"
 expect_run match_list "$CASES/match_list.h2o" "a"

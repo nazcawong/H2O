@@ -1,0 +1,11 @@
+def main() -> {IO} ():
+    println(2 ** 2)
+    println(2 ** 3)
+    println(2 ** 2 ** 3)
+    println(7 % 3)
+    println(7 // 2)
+    println((0 - 7) // 2)
+    println((0 - 7) / 2)
+    println(abs(0 - 7))
+    println(isqrt(4))
+    println(isqrt(10))

@@ -61,8 +61,14 @@ def nat_binop(op):
         "h2o_sub"
     elif op == "*":
         "h2o_mul"
-    elif op == "/" or op == "//":
+    elif op == "/":
         "h2o_div"
+    elif op == "//":
+        "h2o_idiv"
+    elif op == "%":
+        "h2o_mod"
+    elif op == "**":
+        "h2o_pow"
     elif op == "==":
         "h2o_eq"
     elif op == "!=":

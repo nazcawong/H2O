@@ -658,14 +658,23 @@ def parse_add_rest(ts, l):
     else:
         l
 
-def parse_mul(ts, i):
+def parse_pow(ts, i):
     l = parse_un(ts, i)
+    t = peek(ts, l.i)
+    if t.k == "starstar":
+        r = parse_pow(ts, l.i + 1)
+        {v: NBin({op: "**", l: l.v, r: r.v}), i: r.i}
+    else:
+        l
+
+def parse_mul(ts, i):
+    l = parse_pow(ts, i)
     parse_mul_rest(ts, l)
 
 def parse_mul_rest(ts, l):
     t = peek(ts, l.i)
-    if t.k == "star" or t.k == "slash":
-        r = parse_un(ts, l.i + 1)
+    if t.k == "star" or t.k == "slash" or t.k == "percent" or t.k == "slash2":
+        r = parse_pow(ts, l.i + 1)
         op = t.v
         parse_mul_rest(ts, {v: NBin({op: op, l: l.v, r: r.v}), i: r.i})
     else:
