@@ -1,1 +1,1 @@
-t.h2o:6:9: match 沒有涵蓋 Blue
+t.h2o:6:9: match does not cover Blue

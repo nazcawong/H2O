@@ -9,7 +9,7 @@ def need_lab(eff, lab, w):
     if has_lab(eff, lab):
         0
     else:
-        err({k: "", v: "", n: 0, line: w.ln, col: w.cl, file: w.fl}, cat3("這裡不能用 ", lab, cat3("（函數沒有宣告 {", lab, "}）")))
+        err({k: "", v: "", n: 0, line: w.ln, col: w.cl, file: w.fl}, cat3("cannot use ", lab, cat3(" (function has no {", lab, "})")))
 
 def call_lab(w):
     match w.fun:
@@ -55,13 +55,13 @@ def check_match(w):
     if has_lab(ns, "_"):
         0
     elif has_lab(ns, "Some") and not has_lab(ns, "None"):
-        err({k: "", v: "", n: 0, line: w.ln, col: w.cl, file: w.fl}, "match 沒有涵蓋 None")
+        err({k: "", v: "", n: 0, line: w.ln, col: w.cl, file: w.fl}, "match does not cover None")
     elif has_lab(ns, "None") and not has_lab(ns, "Some"):
-        err({k: "", v: "", n: 0, line: w.ln, col: w.cl, file: w.fl}, "match 沒有涵蓋 Some")
+        err({k: "", v: "", n: 0, line: w.ln, col: w.cl, file: w.fl}, "match does not cover Some")
     elif has_lab(ns, "Ok") and not has_lab(ns, "Err"):
-        err({k: "", v: "", n: 0, line: w.ln, col: w.cl, file: w.fl}, "match 沒有涵蓋 Err")
+        err({k: "", v: "", n: 0, line: w.ln, col: w.cl, file: w.fl}, "match does not cover Err")
     elif has_lab(ns, "Err") and not has_lab(ns, "Ok"):
-        err({k: "", v: "", n: 0, line: w.ln, col: w.cl, file: w.fl}, "match 沒有涵蓋 Ok")
+        err({k: "", v: "", n: 0, line: w.ln, col: w.cl, file: w.fl}, "match does not cover Ok")
     else:
         0
 
@@ -139,7 +139,7 @@ def once_join_lin_fn(a, b):
         if la == lb:
             0
         else:
-            err(a.at, cat3(s, " 標了 once，沒有用到（會漏關）", ""))
+            err(a.at, cat3(s, " is once but unused", ""))
 
 def once_join(a, b, base):
     live = foldl(a.live, [], once_keep_both(b.live))
@@ -150,7 +150,7 @@ def once_join(a, b, base):
 def once_fin_one(st):
     fn(z, s):
         if once_has(st.live, s):
-            err(st.at, cat3(s, " 標了 once，沒有用到（會漏關）", ""))
+            err(st.at, cat3(s, " is once but unused", ""))
         else:
             0
 

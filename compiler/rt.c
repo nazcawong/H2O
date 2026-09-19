@@ -14,6 +14,7 @@
 #include <termios.h>
 #include <dirent.h>
 #include <errno.h>
+#include <sys/ioctl.h>
 #endif
 #if defined(_WIN32) || defined(__wasi__)
 #else
@@ -226,14 +227,40 @@ static void h2o_hist_add(const char *s){
     h2o_hist[h2o_hist_n++]=c;
     h2o_hist_save();
 }
+static int h2o_old_rows;
+static int h2o_cols(void){
+#if !defined(__wasi__) && !defined(_WIN32)
+    struct winsize ws;
+    if(ioctl(1, TIOCGWINSZ, &ws)==0 && ws.ws_col>0) return (int)ws.ws_col;
+#endif
+    return 80;
+}
+static int h2o_utf8_prev(const char *buf, int cur){
+    if(cur<=0) return 0;
+    cur--;
+    while(cur>0 && ((unsigned char)buf[cur] & 0xC0)==0x80) cur--;
+    return cur;
+}
+static void h2o_esc_n(const char *pre, int n, const char *suf){
+    if(n<=0) return;
+    fprintf(stdout, "%s%d%s", pre, n, suf);
+}
 static void h2o_line_draw(int oldc, int oldn, const char *buf, int n, int cur){
-    int i;
+    int cols=h2o_cols();
+    int plen=(int)strlen(h2o_prompt);
+    int total=plen+n;
+    int want_row=(plen+cur)/cols;
+    int want_col=(plen+cur)%cols;
     (void)oldc; (void)oldn;
+    if(h2o_old_rows>0) h2o_esc_n("\033[", h2o_old_rows, "A");
     fputc('\r', stdout);
     fputs(h2o_prompt, stdout);
-    if(n) fwrite(buf, 1, (size_t)n, stdout);
-    fputs("\033[K", stdout);
-    for(i=0;i<n-cur;i++) fputc('\b', stdout);
+    if(n>0) fwrite(buf, 1, (size_t)n, stdout);
+    fputs("\033[J", stdout);
+    h2o_old_rows=total/cols;
+    if(h2o_old_rows>want_row) h2o_esc_n("\033[", h2o_old_rows-want_row, "A");
+    fputc('\r', stdout);
+    if(want_col>0) h2o_esc_n("\033[", want_col, "C");
     fflush(stdout);
 }
 static int h2o_word_start(const char *buf, int cur){
@@ -357,12 +384,15 @@ static int h2o_tty_line(char *buf, int cap){
     hist_i=h2o_hist_n;
     h2o_hist_load();
     hist_i=h2o_hist_n;
+    h2o_old_rows=0;
     if(h2o_tty_raw()) return -1;
     for(;;){
         ssize_t r=read(0, &c, 1);
         if(r<=0){ h2o_tty_restore(); return 0; }
         if(c=='\r' || c=='\n'){
+            h2o_line_draw(oldc, oldn, buf, n, n);
             fputc('\n', stdout); fflush(stdout);
+            h2o_old_rows=0;
             buf[n]=0;
             h2o_tty_restore();
             h2o_hist_add(buf);
@@ -389,8 +419,9 @@ static int h2o_tty_line(char *buf, int cap){
         }
         if(c==127 || c==8){
             if(cur>0){
-                memmove(buf+cur-1, buf+cur, (size_t)(n-cur)+1);
-                cur--; n--;
+                int p=h2o_utf8_prev(buf, cur);
+                memmove(buf+p, buf+cur, (size_t)(n-cur)+1);
+                n-=cur-p; cur=p;
                 h2o_line_draw(oldc, oldn, buf, n, cur); oldn=n; oldc=cur;
             }
             continue;

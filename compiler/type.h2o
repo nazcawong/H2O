@@ -544,7 +544,7 @@ def need_eff_one(s, lab):
     if any(s.eff, fn(x): x == lab):
         s
     else:
-        err(s.at, cat3("這裡不能用 ", lab, cat3("（函數沒有宣告 {", lab, "}）")))
+        err(s.at, cat3("cannot use ", lab, cat3(" (function has no {", lab, "})")))
 
 def need_effs(need, st):
     foldl(need, st, need_eff_one)
@@ -979,7 +979,7 @@ def prove_tc(st, c):
     if has_trait(st, c.tr, t):
         st
     else:
-        err(st.at, cat3(ty_show(ty_walks(t, st)), " 沒有 ", c.tr))
+        err(st.at, cat3(ty_show(ty_walks(t, st)), " has no ", c.tr))
 
 def prove_tcs(tcs, st):
     foldl(tcs, st, prove_tc)
@@ -1161,7 +1161,7 @@ def ffi_sig(lib, sym):
 def infer_ffi_known(lib, sym, ia, st):
     match ffi_sig(lib, sym):
         case None:
-            err(st.at, cat3("沒有 ffi ", lib, cat(".", sym)))
+            err(st.at, cat3("no ffi ", lib, cat(".", sym)))
             {t: TNever(0), st: st}
         case Some(sig):
             if list_len(ia.ts) != 3:
@@ -1365,17 +1365,17 @@ def check_exh(st, sty, names):
         miss = foldl(want, [], gen_keep(names))
         if list_len(miss) == 0:
             if any(names, fn(x): x == "Some") and not any(names, fn(x): x == "None"):
-                err(st.at, "match 沒有涵蓋 None")
+                err(st.at, "match does not cover None")
             elif any(names, fn(x): x == "None") and not any(names, fn(x): x == "Some"):
-                err(st.at, "match 沒有涵蓋 Some")
+                err(st.at, "match does not cover Some")
             elif any(names, fn(x): x == "Ok") and not any(names, fn(x): x == "Err"):
-                err(st.at, "match 沒有涵蓋 Err")
+                err(st.at, "match does not cover Err")
             elif any(names, fn(x): x == "Err") and not any(names, fn(x): x == "Ok"):
-                err(st.at, "match 沒有涵蓋 Ok")
+                err(st.at, "match does not cover Ok")
             else:
                 st
         else:
-            err(st.at, cat("match 沒有涵蓋 ", nth(miss, 0)))
+            err(st.at, cat("match does not cover ", nth(miss, 0)))
 
 def infer_list_item(el, s, x):
     match x:
@@ -1470,7 +1470,7 @@ def infer_field(objt, name, st):
                         u = ty_fresh(st)
                         {t: u.t, st: u.st}
                     else:
-                        err(st.at, cat("沒有欄位 ", name))
+                        err(st.at, cat("no field ", name))
         case _:
             u = ty_fresh(st)
             {t: u.t, st: u.st}
@@ -1510,7 +1510,7 @@ def infer_expr(e, st):
                                     u = ty_fresh(st)
                                     {t: u.t, st: u.st}
                                 else:
-                                    err(st.at, cat("沒有 ", s))
+                                    err(st.at, cat("unknown name: ", s))
         case NCall(w):
             infer_call(w, st)
         case NField(w):
@@ -1622,9 +1622,9 @@ def infer_trait_call(tr, meth, args, st):
                     r = apply_fun(u.t, ia.ts, u.st)
                     {t: r.t, st: r.st}
                 case None:
-                    err(st.at, cat3(ty_show(ty_walks(fa, ia.st)), " 沒有 ", tr))
+                    err(st.at, cat3(ty_show(ty_walks(fa, ia.st)), " has no ", tr))
         else:
-            err(st.at, cat3(ty_show(ty_walks(fa, ia.st)), " 沒有 ", tr))
+            err(st.at, cat3(ty_show(ty_walks(fa, ia.st)), " has no ", tr))
 
 def infer_call(w, st):
     st0 = st_at(st, at_tok(w.ln, w.cl, w.fl))
